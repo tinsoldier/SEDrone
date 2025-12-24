@@ -1,0 +1,24 @@
+﻿R e a d m e
+-----------
+
+In this file you can include any instructions or other comments you want to have injected onto the 
+top of your final script. You can safely delete this file if you do not want any such comments.
+
+[Drone]
+TargetGridName=Player Rover
+; Offset in target-local coords: Right, Up, Back
+StationOffset=30,30,-30
+MaxSpeed=100
+ApproachSpeed=50
+PrecisionRadius=10
+HoverAltitude=30
+
+[PositionPID]
+Kp=2.0
+Ki=0.1
+Kd=1.0
+
+[AltitudePID]
+Kp=3.0
+Ki=0.2
+Kd=1.5
