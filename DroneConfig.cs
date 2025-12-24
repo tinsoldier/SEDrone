@@ -1,32 +1,165 @@
+using VRage.Game.ModAPI.Ingame.Utilities;
 using VRageMath;
 
 namespace IngameScript
 {
     public class DroneConfig
     {
-        // Station keeping offset (target-local coordinates)
-        // X = right, Y = up, Z = backward (behind target)
-        Vector3D StationOffset;
+        // === Target Identification ===
+        public string TargetGridName { get; set; } = "";
+        public long TargetEntityId { get; set; } = 0;  // Alternative: direct ID
 
-        // Target identification
-        string TargetGridName;
-        long TargetEntityId;        // Alternative: direct ID
+        // === Station Keeping ===
+        // Offset in target-local coordinates
+        // X = right (+) / left (-)
+        // Y = up (+) / down (-)  
+        // Z = forward (+) / backward (-)
+        public Vector3D StationOffset { get; set; } = new Vector3D(30, 30, -30);
 
-        // Flight parameters
-        double MaxSpeed;            // Absolute speed cap
-        double ApproachSpeed;       // Speed when far from station
-        double PrecisionRadius;     // Distance at which to slow down
-        double HoverAltitude;       // Ground-relative altitude
+        // === Flight Parameters ===
+        public double MaxSpeed { get; set; } = 100.0;           // Hard speed cap (m/s)
+        public double ApproachSpeed { get; set; } = 60.0;       // Speed when distant (m/s)
+        public double PrecisionRadius { get; set; } = 20.0;     // Slow-down distance (m)
+        public double StationRadius { get; set; } = 2.0;        // "Close enough" tolerance (m)
+        public double HoverAltitude { get; set; } = 30.0;       // Ground-relative height (m)
 
-        // Tuning
-        PIDGains PositionPID;
-        PIDGains AltitudePID;
-        PIDGains OrientationPID;
+        // === PID Tuning ===
+        public PIDGains PositionPID { get; set; } = new PIDGains(2.0, 0.1, 0.8, 50);
+        public PIDGains AltitudePID { get; set; } = new PIDGains(3.0, 0.2, 1.0, 30);
+        public PIDGains OrientationPID { get; set; } = new PIDGains(2.0, 0.0, 0.5, 10);
+
+        // === Timing ===
+        public int UpdateFrequency { get; set; } = 10;          // Updates per second (1, 10, 100)
+        public double PredictionTime { get; set; } = 0.5;       // How far ahead to predict target (seconds)
+
+        /// <summary>
+        /// Parses configuration from Custom Data in INI format.
+        /// </summary>
+        /// <param name="customData">The Custom Data string from the Programmable Block</param>
+        /// <returns>A populated DroneConfig instance</returns>
+        public static DroneConfig Parse(string customData)
+        {
+            var config = new DroneConfig();
+            var ini = new MyIni();
+
+            if (!ini.TryParse(customData))
+            {
+                // Return defaults if parsing fails
+                return config;
+            }
+
+            // === Target Section ===
+            config.TargetGridName = ini.Get("Target", "GridName").ToString(config.TargetGridName);
+            config.TargetEntityId = ini.Get("Target", "EntityId").ToInt64(config.TargetEntityId);
+
+            // === Station Section ===
+            double offsetRight = ini.Get("Station", "OffsetRight").ToDouble(config.StationOffset.X);
+            double offsetUp = ini.Get("Station", "OffsetUp").ToDouble(config.StationOffset.Y);
+            double offsetForward = ini.Get("Station", "OffsetForward").ToDouble(config.StationOffset.Z);
+            config.StationOffset = new Vector3D(offsetRight, offsetUp, offsetForward);
+
+            // === Flight Section ===
+            config.MaxSpeed = ini.Get("Flight", "MaxSpeed").ToDouble(config.MaxSpeed);
+            config.ApproachSpeed = ini.Get("Flight", "ApproachSpeed").ToDouble(config.ApproachSpeed);
+            config.PrecisionRadius = ini.Get("Flight", "PrecisionRadius").ToDouble(config.PrecisionRadius);
+            config.StationRadius = ini.Get("Flight", "StationRadius").ToDouble(config.StationRadius);
+            config.HoverAltitude = ini.Get("Flight", "HoverAltitude").ToDouble(config.HoverAltitude);
+
+            // === PID Sections ===
+            config.PositionPID = ParsePIDGains(ini, "PositionPID", config.PositionPID);
+            config.AltitudePID = ParsePIDGains(ini, "AltitudePID", config.AltitudePID);
+            config.OrientationPID = ParsePIDGains(ini, "OrientationPID", config.OrientationPID);
+
+            // === Advanced Section ===
+            config.UpdateFrequency = ini.Get("Advanced", "UpdateFrequency").ToInt32(config.UpdateFrequency);
+            config.PredictionTime = ini.Get("Advanced", "PredictionTime").ToDouble(config.PredictionTime);
+
+            return config;
+        }
+
+        /// <summary>
+        /// Parses PID gains from a specific INI section.
+        /// </summary>
+        private static PIDGains ParsePIDGains(MyIni ini, string section, PIDGains defaults)
+        {
+            return new PIDGains(
+                ini.Get(section, "Kp").ToDouble(defaults.Kp),
+                ini.Get(section, "Ki").ToDouble(defaults.Ki),
+                ini.Get(section, "Kd").ToDouble(defaults.Kd),
+                ini.Get(section, "IntegralLimit").ToDouble(defaults.IntegralLimit)
+            );
+        }
+
+        /// <summary>
+        /// Generates a default configuration template for Custom Data.
+        /// </summary>
+        public static string GenerateTemplate()
+        {
+            return @"[Target]
+; Name of the grid to follow (partial match supported)
+GridName=Player Rover
+; Alternative: EntityId=123456789
+
+[Station]
+; Offset from target in LOCAL coordinates
+; Right(+)/Left(-), Up(+)/Down(-), Forward(+)/Back(-)
+OffsetRight=30
+OffsetUp=30
+OffsetForward=-30
+
+[Flight]
+; Speed limits (m/s)
+MaxSpeed=100
+ApproachSpeed=60
+; Distance thresholds (m)
+PrecisionRadius=20
+StationRadius=2
+; Hover height above terrain (m)
+HoverAltitude=30
+
+[PositionPID]
+Kp=2.0
+Ki=0.1
+Kd=0.8
+IntegralLimit=50
+
+[AltitudePID]
+Kp=3.0
+Ki=0.2
+Kd=1.0
+IntegralLimit=30
+
+[OrientationPID]
+Kp=2.0
+Ki=0.0
+Kd=0.5
+IntegralLimit=10
+
+[Advanced]
+; Updates per second: 1, 10, or 100
+UpdateFrequency=10
+; How far ahead to predict target position (seconds)
+PredictionTime=0.5
+";
+        }
     }
 
-    struct PIDGains
+    /// <summary>
+    /// Holds PID controller gain values.
+    /// </summary>
+    public struct PIDGains
     {
-        double Kp, Ki, Kd;
-        double IntegralLimit;
+        public double Kp;           // Proportional gain
+        public double Ki;           // Integral gain
+        public double Kd;           // Derivative gain
+        public double IntegralLimit; // Anti-windup clamp
+
+        public PIDGains(double kp, double ki, double kd, double integralLimit = 100)
+        {
+            Kp = kp;
+            Ki = ki;
+            Kd = kd;
+            IntegralLimit = integralLimit;
+        }
     }
 }

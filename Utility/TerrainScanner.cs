@@ -1,14 +1,30 @@
 using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
-namespace IngameScript.Utility
+namespace IngameScript
 {
+    /// <summary>
+    /// Uses camera raycasting to detect terrain and maintain altitude.
+    /// TODO: Implement in Phase 5
+    /// </summary>
     class TerrainScanner
     {
-        IMyCameraBlock Camera;      // For raycasting
-        double LastGroundDistance;
-        Vector3D LastGroundNormal;
+        private IMyCameraBlock _camera;
+        private double _lastGroundDistance;
+        private Vector3D _lastGroundNormal;
 
-        bool TryScanTerrain(out double altitude, out Vector3D normal);
+        /// <summary>
+        /// Attempts to scan terrain below the drone.
+        /// </summary>
+        /// <param name="altitude">Distance to ground</param>
+        /// <param name="normal">Surface normal vector</param>
+        /// <returns>True if scan was successful</returns>
+        public bool TryScanTerrain(out double altitude, out Vector3D normal)
+        {
+            // Placeholder - to be implemented in Phase 5
+            altitude = _lastGroundDistance;
+            normal = _lastGroundNormal;
+            return false;
+        }
     }
 }

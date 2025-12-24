@@ -1,49 +1,63 @@
-using IngameScript.Utility;
 using Sandbox.ModAPI.Ingame;
+using System.Collections.Generic;
+using VRageMath;
 
 namespace IngameScript
 {
+    /// <summary>
+    /// Translates navigation outputs into thruster and gyro commands.
+    /// TODO: Implement in Phase 4
+    /// </summary>
     class FlightController
     {
         // Hardware
-        ThrusterManager Thrusters;
-        GyroController Gyros;
-        IMyShipController Reference;
+        private ThrusterManager _thrusters;
+        private GyroController _gyros;
+        private IMyShipController _reference;
 
         // Controllers
-        PIDController3D PositionPID;
-        PIDController AltitudePID;
+        private PIDController3D _positionPID;
+        private PIDController _altitudePID;
 
         // State
-        Vector3D CurrentVelocity;
-        Vector3D CurrentPosition;
-        double CurrentAltitude;
+        public Vector3D CurrentVelocity { get; private set; }
+        public Vector3D CurrentPosition { get; private set; }
+        public double CurrentAltitude { get; private set; }
 
-        // Methods
-        void Update(Vector3D desiredPosition, Vector3D desiredVelocity);
-        void ApplyThrust(Vector3D worldThrust);
-        void SetOrientation(Vector3D forward, Vector3D up);
+        // Placeholder methods - to be implemented in Phase 4
+        public void Update(Vector3D desiredPosition, Vector3D desiredVelocity) { }
+        public void ApplyThrust(Vector3D worldThrust) { }
+        public void SetOrientation(Vector3D forward, Vector3D up) { }
     }
 
+    /// <summary>
+    /// Groups and controls thrusters by direction.
+    /// TODO: Implement in Phase 4
+    /// </summary>
     class ThrusterManager
     {
-        // Thrusters grouped by facing direction (world-relative)
-        Dictionary<Base6Directions.Direction, List<IMyThrust>> ThrusterGroups;
-        Dictionary<Base6Directions.Direction, double> MaxThrustByDirection;
+        // Thrusters grouped by facing direction
+        private Dictionary<Base6Directions.Direction, List<IMyThrust>> _thrusterGroups;
+        private Dictionary<Base6Directions.Direction, double> _maxThrustByDirection;
 
-        // Methods
-        void DiscoverThrusters();
-        void SetWorldThrust(Vector3D thrust);   // Distributes to appropriate thrusters
-        void SetThrustPercent(Base6Directions.Direction dir, double percent);
+        // Placeholder methods - to be implemented in Phase 4
+        public void DiscoverThrusters() { }
+        public void SetWorldThrust(Vector3D thrust) { }
+        public void SetThrustPercent(Base6Directions.Direction dir, double percent) { }
     }
 
+    /// <summary>
+    /// Manages orientation control via gyroscopes.
+    /// TODO: Will be replaced by dedicated GyroController in Utility folder
+    /// </summary>
     class GyroController
     {
-        List<IMyGyro> Gyros;
-        PIDController3D OrientationPID;
+        private List<IMyGyro> _gyros;
+        private PIDController3D _orientationPID;
 
-        void SetTargetOrientation(MatrixD target);
-        void Update();
-        void ReleaseControl();
+        // Placeholder methods - to be implemented
+        public void SetTargetOrientation(MatrixD target) { }
+        public void Update() { }
+        public void ReleaseControl() { }
     }
 }

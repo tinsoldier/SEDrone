@@ -1,7 +1,7 @@
 using System;
 using VRageMath;
 
-namespace IngameScript.Utility
+namespace IngameScript
 {
 
     /// <summary>
@@ -95,11 +95,70 @@ namespace IngameScript.Utility
         }
     }
 
+    /// <summary>
+    /// A 3D PID controller that wraps three independent PIDController instances for X, Y, and Z axes.
+    /// Useful for position, velocity, or rotation control in 3D space.
+    /// </summary>
     public class PIDController3D
     {
-        PIDController X, Y, Z;
-        
-        Vector3D Update(Vector3D error, double dt);
-        void Reset();
-    }    
+        private readonly PIDController _x;
+        private readonly PIDController _y;
+        private readonly PIDController _z;
+
+        /// <summary>
+        /// Initializes a new PIDController3D with the same gains for all axes.
+        /// </summary>
+        /// <param name="gains">PID gains to apply to all three axes</param>
+        public PIDController3D(PIDGains gains)
+        {
+            _x = new PIDController(gains.Kp, gains.Ki, gains.Kd, gains.IntegralLimit, -gains.IntegralLimit);
+            _y = new PIDController(gains.Kp, gains.Ki, gains.Kd, gains.IntegralLimit, -gains.IntegralLimit);
+            _z = new PIDController(gains.Kp, gains.Ki, gains.Kd, gains.IntegralLimit, -gains.IntegralLimit);
+        }
+
+        /// <summary>
+        /// Initializes a new PIDController3D with individual gains for each axis.
+        /// </summary>
+        public PIDController3D(PIDGains xGains, PIDGains yGains, PIDGains zGains)
+        {
+            _x = new PIDController(xGains.Kp, xGains.Ki, xGains.Kd, xGains.IntegralLimit, -xGains.IntegralLimit);
+            _y = new PIDController(yGains.Kp, yGains.Ki, yGains.Kd, yGains.IntegralLimit, -yGains.IntegralLimit);
+            _z = new PIDController(zGains.Kp, zGains.Ki, zGains.Kd, zGains.IntegralLimit, -zGains.IntegralLimit);
+        }
+
+        /// <summary>
+        /// Initializes a new PIDController3D with explicit gain values for all axes.
+        /// </summary>
+        public PIDController3D(double kp, double ki, double kd, double integralLimit = 100)
+        {
+            _x = new PIDController(kp, ki, kd, integralLimit, -integralLimit);
+            _y = new PIDController(kp, ki, kd, integralLimit, -integralLimit);
+            _z = new PIDController(kp, ki, kd, integralLimit, -integralLimit);
+        }
+
+        /// <summary>
+        /// Computes the PID output for a 3D error vector.
+        /// </summary>
+        /// <param name="error">The error vector (target - current) in 3D space</param>
+        /// <param name="deltaTime">Time elapsed since last update in seconds</param>
+        /// <returns>A Vector3D containing the PID output for each axis</returns>
+        public Vector3D Compute(Vector3D error, double deltaTime)
+        {
+            return new Vector3D(
+                _x.Compute(error.X, deltaTime),
+                _y.Compute(error.Y, deltaTime),
+                _z.Compute(error.Z, deltaTime)
+            );
+        }
+
+        /// <summary>
+        /// Resets all three axis controllers, clearing integral and derivative state.
+        /// </summary>
+        public void Reset()
+        {
+            _x.Reset();
+            _y.Reset();
+            _z.Reset();
+        }
+    }
 }
