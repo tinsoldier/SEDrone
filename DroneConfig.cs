@@ -3,8 +3,21 @@ using VRageMath;
 
 namespace IngameScript
 {
+    /// <summary>
+    /// Defines the role this grid plays in the formation.
+    /// </summary>
+    public enum GridRole
+    {
+        Drone,      // Follower - receives commands, maintains formation
+        Leader      // Commander - broadcasts position, controls formation
+    }
+
     public class DroneConfig
     {
+        // === Role Configuration ===
+        public GridRole Role { get; set; } = GridRole.Drone;
+        public string IGCChannel { get; set; } = "FORMATION_ALPHA";  // Channel for formation comms
+
         // === Target Identification ===
         public string TargetGridName { get; set; } = "";
         public long TargetEntityId { get; set; } = 0;  // Alternative: direct ID
@@ -47,6 +60,11 @@ namespace IngameScript
                 // Return defaults if parsing fails
                 return config;
             }
+
+            // === Role Section ===
+            string roleStr = ini.Get("Role", "Mode").ToString("Drone");
+            config.Role = roleStr.ToUpperInvariant() == "LEADER" ? GridRole.Leader : GridRole.Drone;
+            config.IGCChannel = ini.Get("Role", "Channel").ToString(config.IGCChannel);
 
             // === Target Section ===
             config.TargetGridName = ini.Get("Target", "GridName").ToString(config.TargetGridName);
@@ -95,7 +113,13 @@ namespace IngameScript
         /// </summary>
         public static string GenerateTemplate()
         {
-            return @"[Target]
+            return @"[Role]
+; Mode: Leader or Drone
+Mode=Drone
+; IGC channel for formation communication
+Channel=FORMATION_ALPHA
+
+[Target]
 ; Name of the grid to follow (partial match supported)
 GridName=Player Rover
 ; Alternative: EntityId=123456789

@@ -1,104 +1,239 @@
-﻿using Sandbox.Game.EntityComponents;
-using Sandbox.ModAPI.Ingame;
-using Sandbox.ModAPI.Interfaces;
-using SpaceEngineers.Game.ModAPI.Ingame;
+﻿using Sandbox.ModAPI.Ingame;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
-using System.Text;
-using VRage;
-using VRage.Collections;
-using VRage.Game;
-using VRage.Game.Components;
-using VRage.Game.GUI.TextPanel;
-using VRage.Game.ModAPI.Ingame;
-using VRage.Game.ModAPI.Ingame.Utilities;
-using VRage.Game.ObjectBuilders.Definitions;
 using VRageMath;
 
 namespace IngameScript
 {
     public partial class Program : MyGridProgram
     {
-        // This file contains your actual script.
-        //
-        // You can either keep all your code here, or you can create separate
-        // code files to make your program easier to navigate while coding.
-        //
-        // Go to:
-        // https://github.com/malware-dev/MDK-SE/wiki/Quick-Introduction-to-Space-Engineers-Ingame-Scripts
-        //
-        // to learn more about ingame scripts.
+        // === Core State ===
+        private DroneConfig _config;
+        private IBrain _activeBrain;
+        private IEnumerator<bool> _brainStateMachine;
+        private BrainContext _context;
 
-        IEnumerator<bool> LogicStateMachine;
+        // === Hardware ===
+        private IMyShipController _reference;
+
+        // === Timing ===
+        private double _lastRunTime;
+        private const double TICKS_PER_SECOND_1 = 1.0;
+        private const double TICKS_PER_SECOND_10 = 1.0 / 6.0;   // ~0.167s
+        private const double TICKS_PER_SECOND_100 = 1.0 / 60.0; // ~0.0167s
 
         public Program()
         {
-            // The constructor, called only once every session and
-            // always before any other method is called. Use it to
-            // initialize your script. 
-            //     
-            // The constructor is optional and can be removed if not
-            // needed.
-            // 
-            // It's recommended to set Runtime.UpdateFrequency 
-            // here, which will allow your script to run itself without a 
-            // timer block.
+            // Parse configuration
+            _config = DroneConfig.Parse(Me.CustomData);
+
+            // If no config exists, generate template
+            if (string.IsNullOrWhiteSpace(Me.CustomData))
+            {
+                Me.CustomData = DroneConfig.GenerateTemplate();
+                Echo("Generated default configuration in Custom Data.");
+                Echo("Please configure and recompile.");
+                return;
+            }
+
+            // Find reference block (cockpit or remote control)
+            _reference = FindReferenceBlock();
+            if (_reference == null)
+            {
+                Echo("ERROR: No cockpit or remote control found!");
+                return;
+            }
+
+            // Build shared context
+            _context = new BrainContext
+            {
+                GridTerminalSystem = GridTerminalSystem,
+                Me = Me,
+                IGC = IGC,
+                Config = _config,
+                Reference = _reference,
+                Echo = Echo,
+                GameTime = 0,
+                DeltaTime = GetDeltaTime()
+            };
+
+            // Select and initialize brain based on role
+            SelectBrain();
+
+            // Set update frequency
+            switch (_config.UpdateFrequency)
+            {
+                case 1:
+                    Runtime.UpdateFrequency = UpdateFrequency.Update1;
+                    break;
+                case 100:
+                    Runtime.UpdateFrequency = UpdateFrequency.Update100;
+                    break;
+                default:
+                    Runtime.UpdateFrequency = UpdateFrequency.Update10;
+                    break;
+            }
+
+            Echo($"Initialized as {_config.Role}");
+            Echo($"Channel: {_config.IGCChannel}");
         }
 
         public void Save()
         {
-            // Called when the program needs to save its state. Use
-            // this method to save your state to the Storage field
-            // or some other means. 
-            // 
-            // This method is optional and can be removed if not
-            // needed.
+            // Future: Save state for persistence across reloads
         }
 
         public void Main(string argument, UpdateType updateSource)
         {
-            // The main entry point of the script, invoked every time
-            // one of the programmable block's Run actions are invoked,
-            // or the script updates itself. The updateSource argument
-            // describes where the update came from. Be aware that the
-            // updateSource is a  bitfield  and might contain more than 
-            // one update type.
-            // 
-            // The method itself is required, but the arguments above
-            // can be removed if not needed.
+            // Calculate timing
+            double currentTime = Runtime.TimeSinceLastRun.TotalSeconds + _lastRunTime;
+            _context.DeltaTime = Runtime.TimeSinceLastRun.TotalSeconds;
+            _context.GameTime = currentTime;
+            _lastRunTime = currentTime;
 
-            if (argument == "ExampleCommand" && LogicStateMachine == null)
+            // Handle commands
+            if (!string.IsNullOrEmpty(argument))
             {
-                LogicStateMachine = ExampleLogicHandler().GetEnumerator();
+                HandleCommand(argument);
             }
 
-
-            if (LogicStateMachine != null)
+            // Run brain state machine
+            if (_brainStateMachine != null)
             {
-                if (!LogicStateMachine.MoveNext() || !LogicStateMachine.Current)
+                try
                 {
-                    LogicStateMachine.Dispose();
-                    LogicStateMachine = null;
+                    if (!_brainStateMachine.MoveNext() || !_brainStateMachine.Current)
+                    {
+                        Echo($"Brain '{_activeBrain?.Name}' completed or failed.");
+                        _brainStateMachine.Dispose();
+                        _brainStateMachine = null;
+                    }
                 }
-            }            
+                catch (Exception ex)
+                {
+                    Echo($"Brain error: {ex.Message}");
+                    _brainStateMachine?.Dispose();
+                    _brainStateMachine = null;
+                }
+            }
+
+            // Status display
+            DisplayStatus();
         }
 
-        #region Example Logic Handler - I'm imagining these as pluggable logic modules you can swap out but support logic across multiple frames
-        public IEnumerable<bool> ExampleLogicHandler()
+        private void SelectBrain()
         {
-            yield return INIT_LOGIC();
-            //yield return FIND_TARGET();
-            //yield return LAUNCH_MISSILES();
-            //yield return RETURN_TO_BOSS();
-        }   
-        
-        public bool INIT_LOGIC()
+            // Shutdown existing brain
+            if (_activeBrain != null)
+            {
+                _activeBrain.Shutdown();
+                _brainStateMachine?.Dispose();
+            }
+
+            // Create appropriate brain based on role
+            switch (_config.Role)
+            {
+                case GridRole.Leader:
+                    _activeBrain = new LeaderBrain();
+                    break;
+                case GridRole.Drone:
+                default:
+                    _activeBrain = new DroneBrain();
+                    break;
+            }
+
+            // Initialize and start
+            _activeBrain.Initialize(_context);
+            _brainStateMachine = _activeBrain.Run();
+        }
+
+        private void HandleCommand(string argument)
         {
-            return true;
-        }     
-        #endregion
+            string cmd = argument.ToUpperInvariant().Trim();
+
+            switch (cmd)
+            {
+                case "RELOAD":
+                    _config = DroneConfig.Parse(Me.CustomData);
+                    _context.Config = _config;
+                    SelectBrain();
+                    Echo("Configuration reloaded.");
+                    break;
+
+                case "STATUS":
+                    Echo($"Role: {_config.Role}");
+                    Echo($"Brain: {_activeBrain?.Name ?? "None"}");
+                    Echo($"Status: {_activeBrain?.Status ?? "N/A"}");
+                    break;
+
+                case "STOP":
+                    _activeBrain?.Shutdown();
+                    _brainStateMachine?.Dispose();
+                    _brainStateMachine = null;
+                    Runtime.UpdateFrequency = UpdateFrequency.None;
+                    Echo("Stopped.");
+                    break;
+
+                case "START":
+                    SelectBrain();
+                    Runtime.UpdateFrequency = UpdateFrequency.Update10;
+                    Echo("Started.");
+                    break;
+
+                default:
+                    Echo($"Unknown command: {argument}");
+                    break;
+            }
+        }
+
+        private void DisplayStatus()
+        {
+            Echo($"=== {_config.Role} ===");
+            Echo($"Brain: {_activeBrain?.Name ?? "None"}");
+            Echo($"Status: {_activeBrain?.Status ?? "N/A"}");
+            Echo($"Time: {_context.GameTime:F1}s");
+        }
+
+        private IMyShipController FindReferenceBlock()
+        {
+            var controllers = new List<IMyShipController>();
+            GridTerminalSystem.GetBlocksOfType(controllers, c => c.CubeGrid == Me.CubeGrid);
+
+            // Prefer cockpits that are set as main
+            foreach (var controller in controllers)
+            {
+                var cockpit = controller as IMyCockpit;
+                if (cockpit != null && cockpit.IsMainCockpit)
+                    return cockpit;
+            }
+
+            // Then any cockpit
+            foreach (var controller in controllers)
+            {
+                if (controller is IMyCockpit)
+                    return controller;
+            }
+
+            // Then remote control
+            foreach (var controller in controllers)
+            {
+                if (controller is IMyRemoteControl)
+                    return controller;
+            }
+
+            // Any controller
+            return controllers.FirstOrDefault();
+        }
+
+        private double GetDeltaTime()
+        {
+            switch (_config.UpdateFrequency)
+            {
+                case 1: return TICKS_PER_SECOND_1;
+                case 100: return TICKS_PER_SECOND_100;
+                default: return TICKS_PER_SECOND_10;
+            }
+        }
     }
 }
