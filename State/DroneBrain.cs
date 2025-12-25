@@ -180,7 +180,7 @@ namespace IngameScript
             Vector3D desiredForward = Vector3D.Normalize(toLeader);
             MatrixD refMatrix = _context.Reference.WorldMatrix;
 
-            // === FIX #1: Transform to local space using LookAt matrix ===
+            // === Transform to local space using LookAt matrix ===
             // This creates a stable local reference frame that doesn't couple axes
             MatrixD lookAtMatrix = MatrixD.CreateLookAt(Vector3D.Zero, refMatrix.Forward, refMatrix.Up);
             Vector3D localTarget = Vector3D.TransformNormal(desiredForward, lookAtMatrix);
@@ -200,7 +200,7 @@ namespace IngameScript
             if (yawVector.LengthSquared() > 0.0001)
             {
                 yawVector = Vector3D.Normalize(yawVector);
-                // FIX: Use dot product with Forward (0,0,-1), not raw Z component
+                // Use dot product with Forward (0,0,-1), not raw Z component
                 yawError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(yawVector, Vector3D.Forward), -1, 1));
                 if (localTarget.X < 0) yawError = -yawError;  // Sign based on which side target is
             }
@@ -209,7 +209,7 @@ namespace IngameScript
             if (pitchVector.LengthSquared() > 0.0001)
             {
                 pitchVector = Vector3D.Normalize(pitchVector);
-                // FIX: Same fix - use dot product with Forward
+                // Use dot product with Forward (0,0,-1), not raw Z component
                 pitchError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(pitchVector, Vector3D.Forward), -1, 1));
                 if (localTarget.Y < 0) pitchError = -pitchError;  // Negative Y = target below = pitch down
             }     
@@ -236,7 +236,7 @@ namespace IngameScript
                 }
             }
 
-            // === FIX #2: Predictive braking ===
+            // === Predictive braking ===
             bool pitchBraking = ShouldBrake(pitchError, ref _lastPitchError, ref _lastPitchVelocity);
             bool yawBraking = ShouldBrake(yawError, ref _lastYawError, ref _lastYawVelocity);
             bool rollBraking = ShouldBrake(rollError, ref _lastRollError, ref _lastRollVelocity);
@@ -244,7 +244,7 @@ namespace IngameScript
             // Total angular error for status display and deadband
             double totalError = Math.Sqrt(pitchError * pitchError + yawError * yawError + rollError * rollError);
             
-            // === FIX #3: Deadband without PID reset ===
+            // === Deadband without PID reset ===
             if (totalError < ALIGNMENT_DEADBAND)
             {
                 SetGyroOverride(Vector3D.Zero);
@@ -375,38 +375,6 @@ namespace IngameScript
             _activeGyro.Yaw = (float)gyroLocal.Y;
             _activeGyro.Roll = (float)gyroLocal.Z;
         }
-
-        // private void SetGyroOverride(Vector3D localRotation)
-        // {
-        //     if (_activeGyro == null || !_activeGyro.IsFunctional)
-        //     {
-        //         SelectActiveGyro();  // Try to find a new gyro
-        //         if (_activeGyro == null) return;
-        //     }
-
-        //     // localRotation is: (pitch, yaw, roll) in reference block local space
-        //     // We need to transform this to the gyro's local space
-            
-        //     MatrixD refMatrix = _context.Reference.WorldMatrix;
-        //     MatrixD gyroMatrix = _activeGyro.WorldMatrix;
-            
-        //     // Build rotation vector in world space from reference local
-        //     // Pitch rotates around Right (X), Yaw around Up (Y), Roll around Forward (Z)
-        //     Vector3D worldRotation = 
-        //         refMatrix.Right * localRotation.X +    // Pitch
-        //         refMatrix.Up * localRotation.Y +       // Yaw
-        //         refMatrix.Forward * localRotation.Z;   // Roll
-            
-        //     // Transform to gyro local space using dot products
-        //     double gyroPitch = Vector3D.Dot(worldRotation, gyroMatrix.Right);
-        //     double gyroYaw = Vector3D.Dot(worldRotation, gyroMatrix.Up);
-        //     double gyroRoll = Vector3D.Dot(worldRotation, gyroMatrix.Forward);
-
-        //     _activeGyro.GyroOverride = true;
-        //     _activeGyro.Pitch = (float)gyroPitch;
-        //     _activeGyro.Yaw = (float)-gyroYaw;    // SE has inverted yaw
-        //     _activeGyro.Roll = (float)-gyroRoll;  // SE has inverted roll
-        // }
 
         private void ReleaseGyros()
         {
