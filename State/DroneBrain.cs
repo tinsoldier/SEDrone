@@ -46,6 +46,12 @@ namespace IngameScript
         private const double MAX_ANGULAR_VELOCITY = 2.0;  // rad/s - max rotation speed for dampened control
         private const double ALIGNMENT_DEADBAND = 0.005;  // ~0.3 degrees - very tight deadband
         private const double DAMPEN_THRESHOLD = 0.1;      // ~6 degrees - switch to fine control below this
+        private const double PID_ANGLE_THRESHOLD = 0.05;  // ~3 degrees - angle threshold for PID
+        private const double PID_VELOCITY_THRESHOLD = 0.25; // rad/s - velocity threshold for PID
+        private const double PID_MAX_OUTPUT = 2.0;        // rad/s - cap PID output
+        
+        // PID state tracking
+        private bool _pidActive = false;
 
         public void Initialize(BrainContext context)
         {
@@ -246,29 +252,54 @@ namespace IngameScript
                 return;
             }
 
-            // === FIX #5: Multi-stage control ===
+            // Calculate angular velocity (how fast we're rotating)
+            double angularVelocity = Math.Sqrt(
+                _lastPitchVelocity * _lastPitchVelocity + 
+                _lastYawVelocity * _lastYawVelocity
+            );
+
+            // === Multi-stage control with proper PID gating ===
             Vector3D correction;
             
             if (totalError > DAMPEN_THRESHOLD)
             {
-                // Large error: use dampened sinusoidal control (like SkunkBot's DampenAngle)
-                double pitchCmd = pitchBraking ? 0 : DampenAngle(pitchError);
-                double yawCmd = yawBraking ? 0 : DampenAngle(yawError);
-                double rollCmd = rollBraking ? 0 : DampenAngle(rollError) * 0.5;  // Gentler roll
+                // Large error: use dampened sinusoidal control
+                correction = new Vector3D(
+                    pitchBraking ? 0 : DampenAngle(pitchError),
+                    yawBraking ? 0 : DampenAngle(yawError),
+                    rollBraking ? 0 : DampenAngle(rollError) * 0.5
+                );
                 
-                correction = new Vector3D(pitchCmd, yawCmd, rollCmd);
+                // Reset PID when in coarse mode to prevent integral windup
+                if (_pidActive)
+                {
+                    _orientationPID.Reset();
+                    _pidActive = false;
+                }
+            }
+            else if (totalError < PID_ANGLE_THRESHOLD || angularVelocity < PID_VELOCITY_THRESHOLD)
+            {
+                // Fine control: PID only when close AND/OR moving slowly
+                _pidActive = true;
+                
+                Vector3D localError = new Vector3D(pitchError, yawError, rollError);
+                correction = _orientationPID.Compute(localError, _context.DeltaTime);
+                
+                // Cap output like SkunkBot does
+                correction = new Vector3D(
+                    MathHelper.Clamp(correction.X, -PID_MAX_OUTPUT, PID_MAX_OUTPUT),
+                    MathHelper.Clamp(correction.Y, -PID_MAX_OUTPUT, PID_MAX_OUTPUT),
+                    MathHelper.Clamp(correction.Z, -PID_MAX_OUTPUT, PID_MAX_OUTPUT)
+                );
             }
             else
             {
-                // Small error: use PID for fine control
-                Vector3D localError = new Vector3D(pitchError, yawError, rollError);
-                
-                // Apply braking by zeroing axes that should brake
-                if (pitchBraking) localError.X = 0;
-                if (yawBraking) localError.Y = 0;
-                if (rollBraking) localError.Z = 0;
-                
-                correction = _orientationPID.Compute(localError, _context.DeltaTime);
+                // In the gap: still use dampened but gentler
+                correction = new Vector3D(
+                    pitchBraking ? 0 : DampenAngle(pitchError) * 0.5,
+                    yawBraking ? 0 : DampenAngle(yawError) * 0.5,
+                    rollBraking ? 0 : DampenAngle(rollError) * 0.25
+                );
             }
 
             // Apply to gyro

@@ -39,7 +39,8 @@ namespace IngameScript
         // === PID Tuning ===
         public PIDGains PositionPID { get; set; } = new PIDGains(2.0, 0.1, 0.8, 50);
         public PIDGains AltitudePID { get; set; } = new PIDGains(3.0, 0.2, 1.0, 30);
-        public PIDGains OrientationPID { get; set; } = new PIDGains(2.0, 0.0, 0.5, 10);
+        // Orientation: Tuned for powerful gyros
+        public PIDGains OrientationPID { get; set; } = new PIDGains(5.0, 1.0, 0.5, 15.0);
 
         // === Timing ===
         public int UpdateFrequency { get; set; } = 10;          // Updates per second (1, 10, 100)
@@ -154,10 +155,11 @@ Kd=1.0
 IntegralLimit=30
 
 [OrientationPID]
-Kp=2.0
-Ki=0.0
+; Tuned for powerful gyros
+Kp=5.0
+Ki=1.0
 Kd=0.5
-IntegralLimit=10
+IntegralLimit=15
 
 [Advanced]
 ; Updates per second: 1, 10, or 100
