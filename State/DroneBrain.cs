@@ -171,24 +171,57 @@ namespace IngameScript
         /// <summary>
         /// Calculates the desired velocity for smooth formation flying.
         /// Base velocity matches leader, with correction toward formation position.
+        /// Uses velocity dampening to prevent oscillation/overshoot.
         /// </summary>
         private Vector3D CalculateDesiredVelocity(Vector3D formationPosition)
         {
             Vector3D myPosition = _context.Reference.GetPosition();
+            Vector3D myVelocity = _context.Reference.GetShipVelocities().LinearVelocity;
             Vector3D toFormation = formationPosition - myPosition;
             double distance = toFormation.Length();
             
             // Start with leader's velocity as base
             Vector3D desired = _lastLeaderState.Velocity;
             
-            // Add correction toward formation position
-            if (distance > _context.Config.StationRadius)
+            // If we're very close, just match leader velocity (no correction needed)
+            if (distance <= _context.Config.StationRadius)
             {
-                // Calculate correction speed based on distance
-                double correctionSpeed = CalculateCorrectionSpeed(distance);
-                Vector3D correction = Vector3D.Normalize(toFormation) * correctionSpeed;
-                desired += correction;
+                return desired;
             }
+            
+            // Calculate direction to formation
+            Vector3D directionToFormation = toFormation / distance;
+            
+            // Calculate our current velocity relative to the leader
+            Vector3D relativeVelocity = myVelocity - _lastLeaderState.Velocity;
+            
+            // Decompose relative velocity into components:
+            // - Toward/away from formation (closing velocity)
+            // - Perpendicular to formation direction (lateral drift)
+            double closingSpeed = Vector3D.Dot(relativeVelocity, directionToFormation);
+            Vector3D lateralVelocity = relativeVelocity - directionToFormation * closingSpeed;
+            
+            // Calculate target correction speed based on distance
+            // This is how fast we WANT to be closing on the formation
+            double targetClosingSpeed = CalculateCorrectionSpeed(distance);
+            
+            // Calculate closing speed error
+            // Positive = we need to speed up toward formation
+            // Negative = we're going too fast, need to brake
+            double closingError = targetClosingSpeed - closingSpeed;
+            
+            // Apply correction for closing speed error
+            // Scale by a gain factor to control responsiveness (lower = smoother, slower)
+            double closingGain = 0.5;  // Only correct half the error per tick
+            Vector3D closingCorrection = directionToFormation * closingError * closingGain;
+            
+            // Dampen lateral drift - we want zero lateral velocity relative to formation
+            // Apply stronger dampening for lateral (perpendicular) motion
+            double lateralGain = 0.8;  // Dampen 80% of lateral velocity
+            Vector3D lateralDampening = -lateralVelocity * lateralGain;
+            
+            // Combine corrections
+            desired += closingCorrection + lateralDampening;
             
             // Clamp to max speed
             double speed = desired.Length();
