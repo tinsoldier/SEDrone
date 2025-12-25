@@ -12,7 +12,7 @@ namespace IngameScript
     {
         // Hardware
         private ThrusterManager _thrusters;
-        private GyroController _gyros;
+        private GyroController _gyroController;
         private IMyShipController _reference;
 
         // Controllers
@@ -44,20 +44,5 @@ namespace IngameScript
         public void DiscoverThrusters() { }
         public void SetWorldThrust(Vector3D thrust) { }
         public void SetThrustPercent(Base6Directions.Direction dir, double percent) { }
-    }
-
-    /// <summary>
-    /// Manages orientation control via gyroscopes.
-    /// TODO: Will be replaced by dedicated GyroController in Utility folder
-    /// </summary>
-    class GyroController
-    {
-        private List<IMyGyro> _gyros;
-        private PIDController3D _orientationPID;
-
-        // Placeholder methods - to be implemented
-        public void SetTargetOrientation(MatrixD target) { }
-        public void Update() { }
-        public void ReleaseControl() { }
     }
 }
