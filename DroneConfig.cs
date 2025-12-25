@@ -42,6 +42,9 @@ namespace IngameScript
         // Orientation: Tuned for powerful gyros
         public PIDGains OrientationPID { get; set; } = new PIDGains(5.0, 1.0, 0.5, 15.0);
 
+        // === Thrust Control ===
+        public ThrustConfig ThrustConfig { get; set; } = new ThrustConfig();
+
         // === Timing ===
         public int UpdateFrequency { get; set; } = 10;          // Updates per second (1, 10, 100)
         public double PredictionTime { get; set; } = 0.5;       // How far ahead to predict target (seconds)
@@ -89,6 +92,9 @@ namespace IngameScript
             config.AltitudePID = ParsePIDGains(ini, "AltitudePID", config.AltitudePID);
             config.OrientationPID = ParsePIDGains(ini, "OrientationPID", config.OrientationPID);
 
+            // === Thrust Section ===
+            config.ThrustConfig = ParseThrustConfig(ini, config.ThrustConfig);
+
             // === Advanced Section ===
             config.UpdateFrequency = ini.Get("Advanced", "UpdateFrequency").ToInt32(config.UpdateFrequency);
             config.PredictionTime = ini.Get("Advanced", "PredictionTime").ToDouble(config.PredictionTime);
@@ -107,6 +113,39 @@ namespace IngameScript
                 ini.Get(section, "Kd").ToDouble(defaults.Kd),
                 ini.Get(section, "IntegralLimit").ToDouble(defaults.IntegralLimit)
             );
+        }
+
+        /// <summary>
+        /// Parses thrust configuration from INI.
+        /// </summary>
+        private static ThrustConfig ParseThrustConfig(MyIni ini, ThrustConfig defaults)
+        {
+            var config = new ThrustConfig();
+            
+            // Axis authority
+            config.LateralAuthority = ini.Get("Thrust", "LateralAuthority").ToDouble(defaults.LateralAuthority);
+            config.VerticalAuthority = ini.Get("Thrust", "VerticalAuthority").ToDouble(defaults.VerticalAuthority);
+            config.LongitudinalAuthority = ini.Get("Thrust", "LongitudinalAuthority").ToDouble(defaults.LongitudinalAuthority);
+            
+            // Hover pad handling
+            config.ExcludeHoverPads = ini.Get("Thrust", "ExcludeHoverPads").ToBoolean(defaults.ExcludeHoverPads);
+            
+            string patternsStr = ini.Get("Thrust", "HoverPadPatterns").ToString("");
+            if (!string.IsNullOrEmpty(patternsStr))
+            {
+                config.HoverPadPatterns.Clear();
+                foreach (var pattern in patternsStr.Split(','))
+                {
+                    string trimmed = pattern.Trim();
+                    if (!string.IsNullOrEmpty(trimmed))
+                        config.HoverPadPatterns.Add(trimmed);
+                }
+            }
+            
+            // Braking
+            config.AccelerationFactor = ini.Get("Thrust", "AccelerationFactor").ToDouble(defaults.AccelerationFactor);
+            
+            return config;
         }
 
         /// <summary>
@@ -160,6 +199,17 @@ Kp=5.0
 Ki=1.0
 Kd=0.5
 IntegralLimit=15
+
+[Thrust]
+; Axis authority: 0.0 = defer to hover pads, 1.0 = full script control
+LateralAuthority=1.0
+VerticalAuthority=0.0
+LongitudinalAuthority=1.0
+; Hover pad detection
+ExcludeHoverPads=true
+HoverPadPatterns=Hover
+; Braking safety factor (0.0-1.0, lower = more conservative)
+AccelerationFactor=0.7
 
 [Advanced]
 ; Updates per second: 1, 10, or 100

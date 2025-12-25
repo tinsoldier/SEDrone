@@ -9,9 +9,9 @@ namespace IngameScript
     /// Brain for follower drones.
     /// Responsibilities:
     /// - Listen for leader broadcasts over IGC
-    /// - Track leader position
-    /// - Orient to face the leader (Milestone 1)
-    /// - (Future) Maintain formation position
+    /// - Track leader position and orientation
+    /// - Orient to face the leader
+    /// - Maintain formation position relative to leader
     /// - (Future) Execute formation commands
     /// </summary>
     public class DroneBrain : IBrain
@@ -31,6 +31,7 @@ namespace IngameScript
 
         // Hardware controllers
         private GyroController _gyroController;
+        private ThrusterController _thrusterController;
 
         public void Initialize(BrainContext context)
         {
@@ -49,7 +50,17 @@ namespace IngameScript
                 _context.Echo
             );
 
-            _status = $"Listening on: {_context.Config.IGCChannel} (Gyros: {_gyroController.GyroCount})";
+            // Initialize thruster controller
+            var thrusters = new List<IMyThrust>();
+            _context.GridTerminalSystem.GetBlocksOfType(thrusters, t => t.CubeGrid == _context.Me.CubeGrid);
+            _thrusterController = new ThrusterController(
+                _context.Reference,
+                thrusters,
+                _context.Config.ThrustConfig,
+                _context.Echo
+            );
+
+            _status = $"Listening: {_context.Config.IGCChannel} (G:{_gyroController.GyroCount} T:{_thrusterController.ThrusterCount})";
         }
 
         public IEnumerator<bool> Run()
@@ -64,7 +75,7 @@ namespace IngameScript
                 yield return true;
             }
 
-            // === PHASE 2: Track and face leader ===
+            // === PHASE 2: Track and follow leader ===
             _context.Echo?.Invoke($"[{Name}] Leader acquired: {_lastLeaderState.GridName}");
 
             while (true)
@@ -77,6 +88,7 @@ namespace IngameScript
                     _hasLeaderContact = false;
                     _status = "Leader lost! Searching...";
                     _gyroController.Release();
+                    _thrusterController.Release();
                     
                     // Wait for reacquisition
                     while (!_hasLeaderContact)
@@ -87,25 +99,134 @@ namespace IngameScript
                     _context.Echo?.Invoke($"[{Name}] Leader reacquired: {_lastLeaderState.GridName}");
                 }
 
-                // Update gyro controller timing and reference
-                _gyroController.SetDeltaTime(_context.DeltaTime);
-                _gyroController.SetReference(_context.Reference);
+                // Update controllers
+                UpdateControllers();
 
-                // Face the leader
+                // Calculate formation position (where we want to be)
+                Vector3D formationPosition = CalculateFormationPosition();
+                
+                // Calculate desired velocity (match leader + correction toward formation)
+                Vector3D desiredVelocity = CalculateDesiredVelocity(formationPosition);
+
+                // Face the leader (or formation position based on preference)
                 _gyroController.LookAt(_lastLeaderState.Position);
 
-                // Calculate distance for status
-                Vector3D myPosition = _context.Reference.GetPosition();
-                Vector3D toLeader = _lastLeaderState.Position - myPosition;
-                double distance = toLeader.Length();
-                
-                // Get angle from gyro controller
-                double angleOff = _gyroController.TotalError * 180.0 / Math.PI;
-                
-                _status = $"Tracking: {_lastLeaderState.GridName} ({distance:F0}m, {angleOff:F1}°)";
+                // Move toward formation position
+                _thrusterController.MoveToward(
+                    formationPosition,
+                    desiredVelocity,
+                    _context.Config.MaxSpeed,
+                    _context.Config.PrecisionRadius
+                );
+
+                // Update status
+                UpdateStatus(formationPosition);
 
                 yield return true;
             }
+        }
+
+        /// <summary>
+        /// Updates controller references and timing.
+        /// </summary>
+        private void UpdateControllers()
+        {
+            // Update timing
+            _gyroController.SetDeltaTime(_context.DeltaTime);
+            _thrusterController.SetDeltaTime(_context.DeltaTime);
+            
+            // Update references
+            _gyroController.SetReference(_context.Reference);
+            _thrusterController.SetReference(_context.Reference);
+            
+            // Update ship mass
+            var massData = _context.Reference.CalculateShipMass();
+            _thrusterController.SetShipMass(massData.PhysicalMass);
+        }
+
+        /// <summary>
+        /// Calculates the world-space position where this drone should be.
+        /// Transforms the local offset from DroneConfig into world space based on leader orientation.
+        /// </summary>
+        private Vector3D CalculateFormationPosition()
+        {
+            // Get leader orientation matrix
+            // The offset is in leader-local coordinates:
+            // X = right (+) / left (-)
+            // Y = up (+) / down (-)
+            // Z = forward (+) / backward (-)
+            
+            Vector3D leaderRight = Vector3D.Cross(_lastLeaderState.Forward, _lastLeaderState.Up);
+            
+            // Transform offset from leader-local to world space
+            Vector3D offset = _context.Config.StationOffset;
+            Vector3D worldOffset = 
+                leaderRight * offset.X +
+                _lastLeaderState.Up * offset.Y +
+                _lastLeaderState.Forward * offset.Z;
+            
+            return _lastLeaderState.Position + worldOffset;
+        }
+
+        /// <summary>
+        /// Calculates the desired velocity for smooth formation flying.
+        /// Base velocity matches leader, with correction toward formation position.
+        /// </summary>
+        private Vector3D CalculateDesiredVelocity(Vector3D formationPosition)
+        {
+            Vector3D myPosition = _context.Reference.GetPosition();
+            Vector3D toFormation = formationPosition - myPosition;
+            double distance = toFormation.Length();
+            
+            // Start with leader's velocity as base
+            Vector3D desired = _lastLeaderState.Velocity;
+            
+            // Add correction toward formation position
+            if (distance > _context.Config.StationRadius)
+            {
+                // Calculate correction speed based on distance
+                double correctionSpeed = CalculateCorrectionSpeed(distance);
+                Vector3D correction = Vector3D.Normalize(toFormation) * correctionSpeed;
+                desired += correction;
+            }
+            
+            // Clamp to max speed
+            double speed = desired.Length();
+            if (speed > _context.Config.MaxSpeed)
+            {
+                desired = desired / speed * _context.Config.MaxSpeed;
+            }
+            
+            return desired;
+        }
+
+        /// <summary>
+        /// Calculates how fast to correct toward formation position based on distance.
+        /// </summary>
+        private double CalculateCorrectionSpeed(double distance)
+        {
+            // Within precision radius: scale down correction
+            if (distance < _context.Config.PrecisionRadius)
+            {
+                return _context.Config.ApproachSpeed * (distance / _context.Config.PrecisionRadius);
+            }
+            
+            // Beyond precision radius: full approach speed
+            return _context.Config.ApproachSpeed;
+        }
+
+        /// <summary>
+        /// Updates the status display.
+        /// </summary>
+        private void UpdateStatus(Vector3D formationPosition)
+        {
+            Vector3D myPosition = _context.Reference.GetPosition();
+            double distToFormation = Vector3D.Distance(myPosition, formationPosition);
+            double distToLeader = Vector3D.Distance(myPosition, _lastLeaderState.Position);
+            double speed = _context.Reference.GetShipSpeed();
+            double angleOff = _gyroController.TotalError * 180.0 / Math.PI;
+            
+            _status = $"{_lastLeaderState.GridName} | F:{distToFormation:F0}m L:{distToLeader:F0}m | {speed:F0}m/s {angleOff:F1}°";
         }
 
         private void ProcessMessages()
@@ -130,6 +251,7 @@ namespace IngameScript
         public void Shutdown()
         {
             _gyroController?.Release();
+            _thrusterController?.Release();
             _status = "Shutdown";
         }
     }

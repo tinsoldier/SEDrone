@@ -1,48 +1,70 @@
 using Sandbox.ModAPI.Ingame;
-using System.Collections.Generic;
 using VRageMath;
 
 namespace IngameScript
 {
     /// <summary>
-    /// Translates navigation outputs into thruster and gyro commands.
-    /// TODO: Implement in Phase 4
+    /// High-level flight controller that coordinates orientation and thrust.
+    /// Wraps GyroController and ThrusterController for simplified usage.
+    /// 
+    /// Note: For Milestone 2, DroneBrain directly uses GyroController and 
+    /// ThrusterController. This class may be used in future milestones for
+    /// more complex flight modes (docking, terrain following, etc.)
     /// </summary>
     class FlightController
     {
-        // Hardware
-        private ThrusterManager _thrusters;
+        // Hardware controllers
         private GyroController _gyroController;
+        private ThrusterController _thrusterController;
         private IMyShipController _reference;
-
-        // Controllers
-        private PIDController3D _positionPID;
-        private PIDController _altitudePID;
 
         // State
         public Vector3D CurrentVelocity { get; private set; }
         public Vector3D CurrentPosition { get; private set; }
-        public double CurrentAltitude { get; private set; }
+        public double CurrentSpeed { get; private set; }
 
-        // Placeholder methods - to be implemented in Phase 4
-        public void Update(Vector3D desiredPosition, Vector3D desiredVelocity) { }
-        public void ApplyThrust(Vector3D worldThrust) { }
-        public void SetOrientation(Vector3D forward, Vector3D up) { }
-    }
+        /// <summary>
+        /// Initializes the flight controller with hardware.
+        /// </summary>
+        public void Initialize(IMyShipController reference, GyroController gyroController, 
+                               ThrusterController thrusterController)
+        {
+            _reference = reference;
+            _gyroController = gyroController;
+            _thrusterController = thrusterController;
+        }
 
-    /// <summary>
-    /// Groups and controls thrusters by direction.
-    /// TODO: Implement in Phase 4
-    /// </summary>
-    class ThrusterManager
-    {
-        // Thrusters grouped by facing direction
-        private Dictionary<Base6Directions.Direction, List<IMyThrust>> _thrusterGroups;
-        private Dictionary<Base6Directions.Direction, double> _maxThrustByDirection;
+        /// <summary>
+        /// Updates state from ship sensors.
+        /// </summary>
+        public void UpdateState()
+        {
+            if (_reference == null) return;
+            
+            CurrentPosition = _reference.GetPosition();
+            CurrentVelocity = _reference.GetShipVelocities().LinearVelocity;
+            CurrentSpeed = _reference.GetShipSpeed();
+        }
 
-        // Placeholder methods - to be implemented in Phase 4
-        public void DiscoverThrusters() { }
-        public void SetWorldThrust(Vector3D thrust) { }
-        public void SetThrustPercent(Base6Directions.Direction dir, double percent) { }
+        /// <summary>
+        /// Moves toward a position while facing it.
+        /// </summary>
+        public void MoveToAndFace(Vector3D targetPosition, Vector3D matchVelocity, 
+                                   double maxSpeed, double precisionRadius)
+        {
+            UpdateState();
+            
+            _gyroController?.LookAt(targetPosition);
+            _thrusterController?.MoveToward(targetPosition, matchVelocity, maxSpeed, precisionRadius);
+        }
+
+        /// <summary>
+        /// Releases all hardware control.
+        /// </summary>
+        public void Release()
+        {
+            _gyroController?.Release();
+            _thrusterController?.Release();
+        }
     }
 }
