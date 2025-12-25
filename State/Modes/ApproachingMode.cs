@@ -40,21 +40,27 @@ namespace IngameScript
                 brain.Config.MinTerrainClearance
             );
 
-            // Check distance
+            // Check distance and calculate braking metrics
             double distance = Vector3D.Distance(brain.Position, formationPos);
+            Vector3D toFormation = formationPos - brain.Position;
+            double currentSpeed = brain.Velocity.Length();
+            double brakingDistance = brain.Thrusters.GetBrakingDistance(currentSpeed, brain.Velocity);
+            double safeSpeed = brain.Thrusters.GetSafeApproachSpeed(distance, toFormation);
 
-            // Check for arrival at formation
-            if (brain.Navigator.IsInFormation(distance))
+            // Check for arrival at formation (velocity-aware)
+            // At high speed, being within braking distance counts as "arrived"
+            if (brain.Navigator.IsInFormationWithBrakingMargin(distance, brakingDistance))
             {
                 return new HoldingMode();
             }
 
-            // Calculate desired velocity
+            // Calculate desired velocity with safe-speed cap
             Vector3D desiredVelocity = brain.Navigator.CalculateDesiredVelocity(
                 brain.Position,
                 brain.Velocity,
                 formationPos,
-                brain.LastLeaderState.Velocity
+                brain.LastLeaderState.Velocity,
+                safeSpeed
             );
 
             // Orientation: face destination waypoint

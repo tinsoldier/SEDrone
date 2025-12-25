@@ -96,17 +96,21 @@ namespace IngameScript
         /// Uses velocity decomposition to prevent oscillation:
         /// - Closing velocity (toward/away from formation) gets proportional correction
         /// - Lateral velocity (perpendicular drift) gets dampened aggressively
+        /// 
+        /// Optionally caps velocity to a safe braking speed to prevent overshoot.
         /// </summary>
         /// <param name="myPosition">Drone's current world position</param>
         /// <param name="myVelocity">Drone's current world velocity</param>
         /// <param name="formationPosition">Target formation position</param>
         /// <param name="leaderVelocity">Leader's current velocity</param>
+        /// <param name="safeSpeed">Optional: Maximum safe speed based on braking capability. Pass 0 to disable.</param>
         /// <returns>Desired world velocity vector</returns>
         public Vector3D CalculateDesiredVelocity(
             Vector3D myPosition,
             Vector3D myVelocity,
             Vector3D formationPosition,
-            Vector3D leaderVelocity)
+            Vector3D leaderVelocity,
+            double safeSpeed = 0)
         {
             Vector3D toFormation = formationPosition - myPosition;
             double distance = toFormation.Length();
@@ -144,6 +148,17 @@ namespace IngameScript
 
             desired += closingCorrection + lateralDampening;
 
+            // Apply safe-speed cap if provided (braking-aware velocity limiting)
+            // This prevents the drone from exceeding a speed it can safely brake from
+            if (safeSpeed > 0)
+            {
+                double desiredSpeed = desired.Length();
+                if (desiredSpeed > safeSpeed)
+                {
+                    desired = desired / desiredSpeed * safeSpeed;
+                }
+            }
+
             // Clamp to max speed
             double speed = desired.Length();
             if (speed > _config.MaxSpeed)
@@ -179,6 +194,21 @@ namespace IngameScript
         }
 
         /// <summary>
+        /// Checks if the drone is within velocity-aware formation tolerance.
+        /// At higher speeds, allows more trailing distance based on braking capability.
+        /// </summary>
+        /// <param name="distanceToFormation">Current distance to formation point</param>
+        /// <param name="brakingDistance">Current braking distance at this speed/direction</param>
+        /// <returns>True if within acceptable tolerance (static + braking margin)</returns>
+        public bool IsInFormationWithBrakingMargin(double distanceToFormation, double brakingDistance)
+        {
+            // Effective tolerance = base radius + (braking distance * safety margin)
+            double effectiveTolerance = _config.StationRadius + 
+                                        (brakingDistance * _config.BrakingSafetyMargin);
+            return distanceToFormation <= effectiveTolerance;
+        }
+
+        /// <summary>
         /// Checks if the drone has drifted far enough to require reapproach.
         /// Uses hysteresis to prevent mode flickering.
         /// </summary>
@@ -187,6 +217,20 @@ namespace IngameScript
         public bool HasExitedFormation(double distanceToFormation, double exitMultiplier = 2.5)
         {
             return distanceToFormation > _config.StationRadius * exitMultiplier;
+        }
+
+        /// <summary>
+        /// Velocity-aware version of HasExitedFormation.
+        /// Accounts for braking distance when determining if drone has truly exited formation.
+        /// </summary>
+        /// <param name="distanceToFormation">Current distance to formation point</param>
+        /// <param name="brakingDistance">Current braking distance at this speed/direction</param>
+        /// <param name="exitMultiplier">Multiplier applied to effective tolerance</param>
+        public bool HasExitedFormationWithBrakingMargin(double distanceToFormation, double brakingDistance, double exitMultiplier = 2.5)
+        {
+            double effectiveTolerance = _config.StationRadius + 
+                                        (brakingDistance * _config.BrakingSafetyMargin);
+            return distanceToFormation > effectiveTolerance * exitMultiplier;
         }
     }
 }

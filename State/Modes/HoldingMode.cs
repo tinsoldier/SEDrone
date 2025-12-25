@@ -46,19 +46,28 @@ namespace IngameScript
 
             // Check distance
             double distance = Vector3D.Distance(brain.Position, formationPos);
+            
+            // Calculate braking metrics for velocity-aware formation keeping
+            Vector3D toFormation = formationPos - brain.Position;
+            double currentSpeed = brain.Velocity.Length();
+            double brakingDistance = brain.Thrusters.GetBrakingDistance(currentSpeed, brain.Velocity);
+            double safeSpeed = brain.Thrusters.GetSafeApproachSpeed(distance, toFormation);
 
-            // Check for excessive drift (hysteresis exit)
-            if (brain.Navigator.HasExitedFormation(distance, EXIT_THRESHOLD_MULTIPLIER))
+            // Check for excessive drift using velocity-aware tolerance
+            // At high speed, trailing by braking distance is acceptable
+            if (brain.Navigator.HasExitedFormationWithBrakingMargin(distance, brakingDistance, EXIT_THRESHOLD_MULTIPLIER))
             {
                 return new ApproachingMode();
             }
 
-            // Calculate desired velocity (same algorithm, but we're closer so corrections are gentler)
+            // Calculate desired velocity with safe-speed cap
+            // This prevents exceeding a speed we can't brake from
             Vector3D desiredVelocity = brain.Navigator.CalculateDesiredVelocity(
                 brain.Position,
                 brain.Velocity,
                 formationPos,
-                brain.LastLeaderState.Velocity
+                brain.LastLeaderState.Velocity,
+                safeSpeed
             );
 
             // Orientation: match leader's compass heading (yaw only, stay level)

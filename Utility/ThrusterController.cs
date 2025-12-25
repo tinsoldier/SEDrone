@@ -93,6 +93,11 @@ namespace IngameScript
         public int HoverPadCount => _allThrusters.Count - _controllableThrusters.Count;
 
         /// <summary>
+        /// Gets the current ship mass used for calculations.
+        /// </summary>
+        public double ShipMass => _shipMass;
+
+        /// <summary>
         /// Creates a new ThrusterController.
         /// </summary>
         /// <param name="reference">Ship controller for orientation reference</param>
@@ -133,6 +138,94 @@ namespace IngameScript
         public void SetShipMass(double mass)
         {
             _shipMass = mass > 0 ? mass : 1000;
+        }
+
+        /// <summary>
+        /// Calculates available braking acceleration in a given world-space direction.
+        /// This tells you how fast the drone can decelerate if traveling in that direction.
+        /// </summary>
+        /// <param name="worldVelocityDirection">Direction of travel in world space (will be normalized)</param>
+        /// <returns>Braking acceleration in m/s² (always positive)</returns>
+        public double GetBrakingAcceleration(Vector3D worldVelocityDirection)
+        {
+            if (_reference == null || worldVelocityDirection.LengthSquared() < 0.001)
+                return 0;
+
+            // Transform velocity direction to ship space
+            Vector3D velocityDirShip = Vector3D.Normalize(WorldToShipDirection(worldVelocityDirection));
+            
+            // Braking thrust is opposite to velocity direction
+            Vector3D brakingDirection = -velocityDirShip;
+            
+            // Get available thrust in braking direction
+            Vector3D availableThrust = GetAvailableThrust(brakingDirection);
+            
+            // Account for gravity (helps or hurts braking depending on direction)
+            Vector3D gravity = _reference.GetNaturalGravity();
+            Vector3D gravityShip = WorldToShipDirection(gravity);
+            Vector3D effectiveThrust = availableThrust;
+            
+            // Only account for gravity on vertical axis if we have authority there
+            if (_config.VerticalAuthority > 0)
+            {
+                effectiveThrust += gravityShip * _shipMass * _config.VerticalAuthority;
+            }
+            
+            // Project effective thrust onto braking direction
+            double thrustMagnitude = Math.Abs(
+                effectiveThrust.X * brakingDirection.X +
+                effectiveThrust.Y * brakingDirection.Y +
+                effectiveThrust.Z * brakingDirection.Z
+            );
+            
+            // F = ma, so a = F/m
+            double acceleration = thrustMagnitude / _shipMass;
+            
+            // Apply safety factor
+            return acceleration * _config.AccelerationFactor;
+        }
+
+        /// <summary>
+        /// Calculates the stopping distance from a given speed in a given direction.
+        /// Uses kinematic equation: d = v² / (2a)
+        /// </summary>
+        /// <param name="speed">Current speed in m/s</param>
+        /// <param name="worldVelocityDirection">Direction of travel in world space</param>
+        /// <returns>Distance in meters required to stop</returns>
+        public double GetBrakingDistance(double speed, Vector3D worldVelocityDirection)
+        {
+            if (speed <= 0)
+                return 0;
+
+            double brakingAccel = GetBrakingAcceleration(worldVelocityDirection);
+            
+            if (brakingAccel <= 0.01)
+                return double.MaxValue; // Can't brake in this direction
+            
+            // d = v² / (2a)
+            return (speed * speed) / (2 * brakingAccel);
+        }
+
+        /// <summary>
+        /// Calculates the maximum safe speed to approach a target from a given distance.
+        /// This is the speed from which the drone can stop in exactly that distance.
+        /// Uses kinematic equation: v = sqrt(2ad)
+        /// </summary>
+        /// <param name="distance">Distance to target in meters</param>
+        /// <param name="worldApproachDirection">Direction of approach in world space</param>
+        /// <returns>Maximum safe speed in m/s</returns>
+        public double GetSafeApproachSpeed(double distance, Vector3D worldApproachDirection)
+        {
+            if (distance <= 0)
+                return 0;
+
+            double brakingAccel = GetBrakingAcceleration(worldApproachDirection);
+            
+            if (brakingAccel <= 0.01)
+                return 0.5; // Minimum crawl speed if no braking available
+            
+            // v = sqrt(2ad)
+            return Math.Sqrt(2 * brakingAccel * distance);
         }
 
         /// <summary>

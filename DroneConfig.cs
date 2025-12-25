@@ -37,6 +37,7 @@ namespace IngameScript
         public double HoverAltitude { get; set; } = 30.0;       // Ground-relative height (m)
         public double MinTerrainClearance { get; set; } = 10.0; // Minimum ground clearance (m)
         public double MaxTiltAngle { get; set; } = 20.0;        // Max pitch from level (degrees)
+        public double BrakingSafetyMargin { get; set; } = 0.8;   // Braking distance factor (0.0-1.0)
 
         // === PID Tuning ===
         public PIDGains PositionPID { get; set; } = new PIDGains(2.0, 0.1, 0.8, 50);
@@ -90,6 +91,7 @@ namespace IngameScript
             config.HoverAltitude = ini.Get("Flight", "HoverAltitude").ToDouble(config.HoverAltitude);
             config.MinTerrainClearance = ini.Get("Flight", "MinTerrainClearance").ToDouble(config.MinTerrainClearance);
             config.MaxTiltAngle = ini.Get("Flight", "MaxTiltAngle").ToDouble(config.MaxTiltAngle);
+            config.BrakingSafetyMargin = ini.Get("Flight", "BrakingSafetyMargin").ToDouble(config.BrakingSafetyMargin);
 
             // === PID Sections ===
             config.PositionPID = ParsePIDGains(ini, "PositionPID", config.PositionPID);
@@ -188,6 +190,11 @@ HoverAltitude=30
 MinTerrainClearance=10
 ; Maximum tilt angle from level (degrees)
 MaxTiltAngle=20
+; Braking safety margin (0.0-1.0)
+; How much of braking distance to use as formation tolerance at speed
+; 0.0 = tight formation (current behavior, may overshoot)
+; 1.0 = always trail by full braking distance (very safe, may feel laggy)
+BrakingSafetyMargin=0.8
 
 [PositionPID]
 Kp=2.0
