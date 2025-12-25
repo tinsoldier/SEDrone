@@ -35,6 +35,7 @@ namespace IngameScript
         public double PrecisionRadius { get; set; } = 20.0;     // Slow-down distance (m)
         public double StationRadius { get; set; } = 2.0;        // "Close enough" tolerance (m)
         public double HoverAltitude { get; set; } = 30.0;       // Ground-relative height (m)
+        public double MinTerrainClearance { get; set; } = 10.0; // Minimum ground clearance (m)
         public double MaxTiltAngle { get; set; } = 20.0;        // Max pitch from level (degrees)
 
         // === PID Tuning ===
@@ -87,6 +88,7 @@ namespace IngameScript
             config.PrecisionRadius = ini.Get("Flight", "PrecisionRadius").ToDouble(config.PrecisionRadius);
             config.StationRadius = ini.Get("Flight", "StationRadius").ToDouble(config.StationRadius);
             config.HoverAltitude = ini.Get("Flight", "HoverAltitude").ToDouble(config.HoverAltitude);
+            config.MinTerrainClearance = ini.Get("Flight", "MinTerrainClearance").ToDouble(config.MinTerrainClearance);
             config.MaxTiltAngle = ini.Get("Flight", "MaxTiltAngle").ToDouble(config.MaxTiltAngle);
 
             // === PID Sections ===
@@ -182,6 +184,8 @@ PrecisionRadius=20
 StationRadius=2
 ; Hover height above terrain (m)
 HoverAltitude=30
+; Minimum ground clearance - formation point lifted if terrain rises (m)
+MinTerrainClearance=10
 ; Maximum tilt angle from level (degrees)
 MaxTiltAngle=20
 

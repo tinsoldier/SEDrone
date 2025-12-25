@@ -130,33 +130,16 @@ namespace IngameScript
                     Vector3D gravity = _context.Reference.GetNaturalGravity();
                     Vector3D leaderForward = _lastLeaderState.Forward;
                     
-                    if (gravity.LengthSquared() > 0.1)
+                    // Fallback right vector in case leader is pointing straight up/down
+                    Vector3D leaderRight = Vector3D.Cross(_lastLeaderState.Forward, _lastLeaderState.Up);
+                    
+                    Vector3D horizontalForward = VectorMath.ProjectOntoHorizontalPlane(leaderForward, gravity, leaderRight);
+                    
+                    if (horizontalForward.LengthSquared() > 0.001)
                     {
-                        // Project leader's forward onto the plane perpendicular to gravity
-                        Vector3D gravityNorm = Vector3D.Normalize(gravity);
-                        Vector3D forwardFlat = leaderForward - gravityNorm * Vector3D.Dot(leaderForward, gravityNorm);
-                        
-                        if (forwardFlat.LengthSquared() > 0.001)
-                        {
-                            _gyroController.OrientToward(Vector3D.Normalize(forwardFlat));
-                        }
-                        else
-                        {
-                            // Leader pointing straight up/down - derive right from Forward×Up, then cross with gravity
-                            Vector3D leaderRight = Vector3D.Cross(_lastLeaderState.Forward, _lastLeaderState.Up);
-                            Vector3D fallbackForward = Vector3D.Cross(leaderRight, gravityNorm);
-                            if (fallbackForward.LengthSquared() > 0.001)
-                            {
-                                _gyroController.OrientToward(Vector3D.Normalize(fallbackForward));
-                            }
-                            // If still degenerate, just hold current orientation
-                        }
+                        _gyroController.OrientToward(horizontalForward);
                     }
-                    else
-                    {
-                        // No gravity - fall back to matching leader directly
-                        _gyroController.OrientToward(leaderForward);
-                    }
+                    // If degenerate, hold current orientation (gyro continues last command)
                 }
                 else
                 {
@@ -229,6 +212,7 @@ namespace IngameScript
         /// <summary>
         /// Calculates the world-space position where this drone should be.
         /// Transforms the local offset from DroneConfig into world space based on leader orientation.
+        /// Also adjusts for terrain - if formation point would be underground, lifts it to maintain clearance.
         /// </summary>
         private Vector3D CalculateFormationPosition()
         {
@@ -247,7 +231,54 @@ namespace IngameScript
                 _lastLeaderState.Up * offset.Y +
                 _lastLeaderState.Forward * offset.Z;
             
-            return _lastLeaderState.Position + worldOffset;
+            Vector3D rawFormationPosition = _lastLeaderState.Position + worldOffset;
+            
+            // Terrain clearance adjustment
+            // Check if the formation point is too close to or below the terrain
+            return AdjustForTerrainClearance(rawFormationPosition);
+        }
+        
+        /// <summary>
+        /// Adjusts a position upward if it would be below minimum terrain clearance.
+        /// Uses the drone's current position to sample terrain elevation.
+        /// </summary>
+        private Vector3D AdjustForTerrainClearance(Vector3D targetPosition)
+        {
+            // Get gravity direction - we need this to know which way is "up"
+            Vector3D gravity = _context.Reference.GetNaturalGravity();
+            if (gravity.LengthSquared() < 0.1)
+            {
+                // No gravity = no terrain to worry about
+                return targetPosition;
+            }
+            
+            Vector3D up = -Vector3D.Normalize(gravity);
+            
+            // Get our current elevation above terrain
+            double currentElevation;
+            if (!_context.Reference.TryGetPlanetElevation(MyPlanetElevation.Surface, out currentElevation))
+            {
+                // Can't get elevation - return unadjusted
+                return targetPosition;
+            }
+            
+            // Calculate how much higher/lower the target is compared to us
+            Vector3D toTarget = targetPosition - _context.Reference.GetPosition();
+            double targetHeightDelta = Vector3D.Dot(toTarget, up);
+            
+            // Estimate target's elevation: our elevation + height difference
+            double estimatedTargetElevation = currentElevation + targetHeightDelta;
+            
+            // Check if target is below minimum clearance
+            double minClearance = _context.Config.MinTerrainClearance;
+            if (estimatedTargetElevation < minClearance)
+            {
+                // Lift the target position to maintain minimum clearance
+                double liftAmount = minClearance - estimatedTargetElevation;
+                return targetPosition + up * liftAmount;
+            }
+            
+            return targetPosition;
         }
 
         /// <summary>
