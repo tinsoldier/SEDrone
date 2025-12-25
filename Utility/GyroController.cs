@@ -36,6 +36,10 @@ namespace IngameScript
         private const double PID_ANGLE_THRESHOLD = 0.05;  // ~3 degrees - angle threshold for PID
         private const double PID_VELOCITY_THRESHOLD = 0.25; // rad/s - velocity threshold for PID
         private const double PID_MAX_OUTPUT = 2.0;        // rad/s - cap PID output
+        private const double DEFAULT_MAX_TILT = 0.35;     // ~20 degrees default max tilt
+        
+        // === Tilt limiting ===
+        private double _maxTiltAngle = DEFAULT_MAX_TILT;  // radians
         
         // === PID state tracking ===
         private bool _pidActive = false;
@@ -84,6 +88,15 @@ namespace IngameScript
         public void SetDeltaTime(double deltaTime)
         {
             _deltaTime = deltaTime > 0.001 ? deltaTime : 0.016;
+        }
+
+        /// <summary>
+        /// Sets the maximum tilt angle (pitch from level) allowed.
+        /// </summary>
+        /// <param name="degrees">Maximum tilt in degrees (default 20)</param>
+        public void SetMaxTilt(double degrees)
+        {
+            _maxTiltAngle = degrees * Math.PI / 180.0;
         }
 
         /// <summary>
@@ -156,8 +169,12 @@ namespace IngameScript
                 pitchError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(pitchVector, Vector3D.Forward), -1, 1));
                 if (localTarget.Y < 0) pitchError = -pitchError;  // Negative Y = target below = pitch down
             }
+            
+            // === TILT LIMITING ===
+            // Clamp pitch to maximum tilt angle to prevent flipping
+            pitchError = MathHelper.Clamp(pitchError, -_maxTiltAngle, _maxTiltAngle);
 
-            // Roll: align with gravity if available
+            // Roll: align with gravity if available (try to stay level)
             Vector3D gravityVec = _reference.GetNaturalGravity();
             if (gravityVec.LengthSquared() > 0.1)
             {
@@ -173,6 +190,9 @@ namespace IngameScript
                     double rollDot = Vector3D.Dot(currentUp, worldUpProjected);
                     double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, worldUpProjected));
                     rollError = Math.Atan2(rollCross, rollDot);
+                    
+                    // Clamp roll to maximum tilt angle
+                    rollError = MathHelper.Clamp(rollError, -_maxTiltAngle, _maxTiltAngle);
                 }
             }
 

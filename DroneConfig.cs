@@ -35,6 +35,7 @@ namespace IngameScript
         public double PrecisionRadius { get; set; } = 20.0;     // Slow-down distance (m)
         public double StationRadius { get; set; } = 2.0;        // "Close enough" tolerance (m)
         public double HoverAltitude { get; set; } = 30.0;       // Ground-relative height (m)
+        public double MaxTiltAngle { get; set; } = 20.0;        // Max pitch from level (degrees)
 
         // === PID Tuning ===
         public PIDGains PositionPID { get; set; } = new PIDGains(2.0, 0.1, 0.8, 50);
@@ -86,6 +87,7 @@ namespace IngameScript
             config.PrecisionRadius = ini.Get("Flight", "PrecisionRadius").ToDouble(config.PrecisionRadius);
             config.StationRadius = ini.Get("Flight", "StationRadius").ToDouble(config.StationRadius);
             config.HoverAltitude = ini.Get("Flight", "HoverAltitude").ToDouble(config.HoverAltitude);
+            config.MaxTiltAngle = ini.Get("Flight", "MaxTiltAngle").ToDouble(config.MaxTiltAngle);
 
             // === PID Sections ===
             config.PositionPID = ParsePIDGains(ini, "PositionPID", config.PositionPID);
@@ -180,6 +182,8 @@ PrecisionRadius=20
 StationRadius=2
 ; Hover height above terrain (m)
 HoverAltitude=30
+; Maximum tilt angle from level (degrees)
+MaxTiltAngle=20
 
 [PositionPID]
 Kp=2.0

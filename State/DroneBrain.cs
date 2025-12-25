@@ -10,7 +10,7 @@ namespace IngameScript
     /// Responsibilities:
     /// - Listen for leader broadcasts over IGC
     /// - Track leader position and orientation
-    /// - Orient to face the leader
+    /// - Orient to face destination (when out of formation) or match leader (when in formation)
     /// - Maintain formation position relative to leader
     /// - (Future) Execute formation commands
     /// </summary>
@@ -28,6 +28,11 @@ namespace IngameScript
         private bool _hasLeaderContact;
         private double _lastContactTime;
         private const double CONTACT_TIMEOUT = 2.0;  // Seconds before leader considered lost
+
+        // Formation state
+        private bool _inFormation;  // Hysteresis state for orientation mode
+        private const double FORMATION_ENTER_THRESHOLD = 1.0;  // Multiplier of StationRadius to enter formation mode
+        private const double FORMATION_EXIT_THRESHOLD = 2.5;   // Multiplier of StationRadius to exit formation mode
 
         // Hardware controllers
         private GyroController _gyroController;
@@ -105,11 +110,59 @@ namespace IngameScript
                 // Calculate formation position (where we want to be)
                 Vector3D formationPosition = CalculateFormationPosition();
                 
+                // Calculate distance to formation for behavior decisions
+                Vector3D myPosition = _context.Reference.GetPosition();
+                double distanceToFormation = Vector3D.Distance(myPosition, formationPosition);
+                
+                // Update formation state with hysteresis
+                UpdateFormationState(distanceToFormation);
+                
                 // Calculate desired velocity (match leader + correction toward formation)
                 Vector3D desiredVelocity = CalculateDesiredVelocity(formationPosition);
 
-                // Face the leader (or formation position based on preference)
-                _gyroController.LookAt(_lastLeaderState.Position);
+                // Orientation behavior:
+                // - In formation: match leader's compass heading only (stay level to gravity)
+                // - Out of formation: face toward formation waypoint
+                if (_inFormation)
+                {
+                    // Match leader's yaw only - project forward onto horizontal plane
+                    // This keeps the drone level regardless of leader's pitch/roll
+                    Vector3D gravity = _context.Reference.GetNaturalGravity();
+                    Vector3D leaderForward = _lastLeaderState.Forward;
+                    
+                    if (gravity.LengthSquared() > 0.1)
+                    {
+                        // Project leader's forward onto the plane perpendicular to gravity
+                        Vector3D gravityNorm = Vector3D.Normalize(gravity);
+                        Vector3D forwardFlat = leaderForward - gravityNorm * Vector3D.Dot(leaderForward, gravityNorm);
+                        
+                        if (forwardFlat.LengthSquared() > 0.001)
+                        {
+                            _gyroController.OrientToward(Vector3D.Normalize(forwardFlat));
+                        }
+                        else
+                        {
+                            // Leader pointing straight up/down - derive right from Forward×Up, then cross with gravity
+                            Vector3D leaderRight = Vector3D.Cross(_lastLeaderState.Forward, _lastLeaderState.Up);
+                            Vector3D fallbackForward = Vector3D.Cross(leaderRight, gravityNorm);
+                            if (fallbackForward.LengthSquared() > 0.001)
+                            {
+                                _gyroController.OrientToward(Vector3D.Normalize(fallbackForward));
+                            }
+                            // If still degenerate, just hold current orientation
+                        }
+                    }
+                    else
+                    {
+                        // No gravity - fall back to matching leader directly
+                        _gyroController.OrientToward(leaderForward);
+                    }
+                }
+                else
+                {
+                    // Face destination waypoint
+                    _gyroController.LookAt(formationPosition);
+                }
 
                 // Move toward formation position
                 _thrusterController.MoveToward(
@@ -120,9 +173,35 @@ namespace IngameScript
                 );
 
                 // Update status
-                UpdateStatus(formationPosition);
+                UpdateStatus(formationPosition, distanceToFormation);
 
                 yield return true;
+            }
+        }
+
+        /// <summary>
+        /// Updates the in-formation state with hysteresis to prevent flickering.
+        /// </summary>
+        private void UpdateFormationState(double distanceToFormation)
+        {
+            double enterThreshold = _context.Config.StationRadius * FORMATION_ENTER_THRESHOLD;
+            double exitThreshold = _context.Config.StationRadius * FORMATION_EXIT_THRESHOLD;
+            
+            if (_inFormation)
+            {
+                // Currently in formation - check if we've drifted too far
+                if (distanceToFormation > exitThreshold)
+                {
+                    _inFormation = false;
+                }
+            }
+            else
+            {
+                // Currently out of formation - check if we've arrived
+                if (distanceToFormation < enterThreshold)
+                {
+                    _inFormation = true;
+                }
             }
         }
 
@@ -138,6 +217,9 @@ namespace IngameScript
             // Update references
             _gyroController.SetReference(_context.Reference);
             _thrusterController.SetReference(_context.Reference);
+            
+            // Update tilt limit from config
+            _gyroController.SetMaxTilt(_context.Config.MaxTiltAngle);
             
             // Update ship mass
             var massData = _context.Reference.CalculateShipMass();
@@ -216,8 +298,8 @@ namespace IngameScript
             Vector3D closingCorrection = directionToFormation * closingError * closingGain;
             
             // Dampen lateral drift - we want zero lateral velocity relative to formation
-            // Apply stronger dampening for lateral (perpendicular) motion
-            double lateralGain = 0.8;  // Dampen 80% of lateral velocity
+            // Apply full dampening for lateral (perpendicular) motion to prevent oscillation
+            double lateralGain = 1.0;  // Dampen 100% of lateral velocity
             Vector3D lateralDampening = -lateralVelocity * lateralGain;
             
             // Combine corrections
@@ -251,15 +333,15 @@ namespace IngameScript
         /// <summary>
         /// Updates the status display.
         /// </summary>
-        private void UpdateStatus(Vector3D formationPosition)
+        private void UpdateStatus(Vector3D formationPosition, double distToFormation)
         {
             Vector3D myPosition = _context.Reference.GetPosition();
-            double distToFormation = Vector3D.Distance(myPosition, formationPosition);
             double distToLeader = Vector3D.Distance(myPosition, _lastLeaderState.Position);
             double speed = _context.Reference.GetShipSpeed();
             double angleOff = _gyroController.TotalError * 180.0 / Math.PI;
+            string mode = _inFormation ? "FORM" : "MOVE";
             
-            _status = $"{_lastLeaderState.GridName} | F:{distToFormation:F0}m L:{distToLeader:F0}m | {speed:F0}m/s {angleOff:F1}°";
+            _status = $"{mode} | F:{distToFormation:F0}m L:{distToLeader:F0}m | {speed:F0}m/s {angleOff:F1}°";
         }
 
         private void ProcessMessages()
