@@ -100,6 +100,36 @@ namespace IngameScript
         }
 
         /// <summary>
+        /// Orients the grid to match a leader's compass heading while staying level to gravity.
+        /// Projects the leader's forward onto the horizontal plane and orients toward it.
+        /// Use this for formation flying where the drone should face the same direction as leader
+        /// but remain level regardless of leader's pitch/roll.
+        /// </summary>
+        /// <param name="leaderForward">The leader's forward direction vector</param>
+        /// <param name="leaderUp">The leader's up direction vector (used as fallback)</param>
+        /// <returns>True if orientation was applied</returns>
+        public bool MatchCompassHeading(Vector3D leaderForward, Vector3D leaderUp)
+        {
+            if (_reference == null || _activeGyro == null)
+                return false;
+
+            Vector3D gravity = _reference.GetNaturalGravity();
+            
+            // Fallback right vector in case leader is pointing straight up/down
+            Vector3D leaderRight = Vector3D.Cross(leaderForward, leaderUp);
+            
+            Vector3D horizontalForward = VectorMath.ProjectOntoHorizontalPlane(leaderForward, gravity, leaderRight);
+            
+            if (horizontalForward.LengthSquared() > 0.001)
+            {
+                return OrientToward(horizontalForward);
+            }
+            
+            // Degenerate case - maintain current orientation
+            return false;
+        }
+
+        /// <summary>
         /// Orients the grid to face a world-space target position.
         /// Call this every tick to maintain orientation.
         /// </summary>
