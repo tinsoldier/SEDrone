@@ -165,6 +165,8 @@ namespace IngameScript
 
             Vector3D desiredForward = Vector3D.Normalize(worldDirection);
             MatrixD refMatrix = _reference.WorldMatrix;
+            Vector3D currentForward = refMatrix.Forward;
+            Vector3D currentUp = refMatrix.Up;
 
             // === Transform to local space using LookAt matrix ===
             // This creates a stable local reference frame that doesn't couple axes
@@ -172,8 +174,6 @@ namespace IngameScript
             Vector3D localTarget = Vector3D.TransformNormal(desiredForward, lookAtMatrix);
             
             // In this local space: +Z is forward, +Y is up, +X is right
-            // We need to find yaw (rotation around Y) and pitch (rotation around X)
-            
             // Decompose into yaw plane (X-Z) and pitch plane (Y-Z)
             Vector3D yawVector = new Vector3D(localTarget.X, 0, localTarget.Z);
             Vector3D pitchVector = new Vector3D(0, localTarget.Y, localTarget.Z);
@@ -186,31 +186,27 @@ namespace IngameScript
             if (yawVector.LengthSquared() > 0.0001)
             {
                 yawVector = Vector3D.Normalize(yawVector);
-                // Use dot product with Forward (0,0,-1), not raw Z component
                 yawError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(yawVector, Vector3D.Forward), -1, 1));
-                if (localTarget.X < 0) yawError = -yawError;  // Sign based on which side target is
+                if (localTarget.X < 0) yawError = -yawError;
             }
             
             // Pitch: angle in the vertical plane
             if (pitchVector.LengthSquared() > 0.0001)
             {
                 pitchVector = Vector3D.Normalize(pitchVector);
-                // Use dot product with Forward (0,0,-1), not raw Z component
                 pitchError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(pitchVector, Vector3D.Forward), -1, 1));
-                if (localTarget.Y < 0) pitchError = -pitchError;  // Negative Y = target below = pitch down
+                if (localTarget.Y < 0) pitchError = -pitchError;
             }
             
             // === TILT LIMITING ===
-            // Clamp pitch to maximum tilt angle to prevent flipping
+            // Clamp pitch error to maximum tilt angle to prevent flipping
             pitchError = MathHelper.Clamp(pitchError, -_maxTiltAngle, _maxTiltAngle);
 
-            // Roll: align with gravity if available (try to stay level)
+            // === ROLL: Align with gravity if available ===
             Vector3D gravityVec = _reference.GetNaturalGravity();
             if (gravityVec.LengthSquared() > 0.1)
             {
                 Vector3D worldUp = -Vector3D.Normalize(gravityVec);
-                Vector3D currentUp = refMatrix.Up;
-                Vector3D currentForward = refMatrix.Forward;
                 
                 // Project world up onto the plane perpendicular to forward
                 Vector3D worldUpProjected = worldUp - currentForward * Vector3D.Dot(worldUp, currentForward);
@@ -220,9 +216,6 @@ namespace IngameScript
                     double rollDot = Vector3D.Dot(currentUp, worldUpProjected);
                     double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, worldUpProjected));
                     rollError = Math.Atan2(rollCross, rollDot);
-                    
-                    // Clamp roll to maximum tilt angle
-                    rollError = MathHelper.Clamp(rollError, -_maxTiltAngle, _maxTiltAngle);
                 }
             }
 
