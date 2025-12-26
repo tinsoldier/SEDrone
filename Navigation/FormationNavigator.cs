@@ -202,6 +202,12 @@ namespace IngameScript
         /// <returns>True if within acceptable tolerance (static + braking margin)</returns>
         public bool IsInFormationWithBrakingMargin(double distanceToFormation, double brakingDistance)
         {
+            // Handle infinite braking distance (can't brake in this direction) - use static radius only
+            if (double.IsInfinity(brakingDistance) || brakingDistance > 10000)
+            {
+                return distanceToFormation <= _config.StationRadius;
+            }
+            
             // Effective tolerance = base radius + (braking distance * safety margin)
             double effectiveTolerance = _config.StationRadius + 
                                         (brakingDistance * _config.BrakingSafetyMargin);
@@ -228,6 +234,12 @@ namespace IngameScript
         /// <param name="exitMultiplier">Multiplier applied to effective tolerance</param>
         public bool HasExitedFormationWithBrakingMargin(double distanceToFormation, double brakingDistance, double exitMultiplier = 2.5)
         {
+            // Handle infinite braking distance (can't brake in this direction) - use static radius only
+            if (double.IsInfinity(brakingDistance) || brakingDistance > 10000)
+            {
+                return distanceToFormation > _config.StationRadius * exitMultiplier;
+            }
+            
             double effectiveTolerance = _config.StationRadius + 
                                         (brakingDistance * _config.BrakingSafetyMargin);
             return distanceToFormation > effectiveTolerance * exitMultiplier;

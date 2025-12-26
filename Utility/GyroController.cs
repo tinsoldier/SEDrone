@@ -29,6 +29,10 @@ namespace IngameScript
         private double _lastYawVelocity;
         private double _lastRollVelocity;
         
+        // === 180° turn hysteresis ===
+        private bool _inBackwardsTurn = false;  // Are we in the middle of a 180° turn?
+        private double _lockedTurnSign = 1.0;   // Which direction we committed to (+1 = right, -1 = left)
+        
         // === Control tuning ===
         private const double MAX_ANGULAR_VELOCITY = 2.0;  // rad/s - max rotation speed for dampened control
         private const double ALIGNMENT_DEADBAND = 0.005;  // ~0.3 degrees - very tight deadband
@@ -127,6 +131,279 @@ namespace IngameScript
             
             // Degenerate case - maintain current orientation
             return false;
+        }
+
+        /// <summary>
+        /// Orients the grid to face a target position using yaw only (rotation around gravity axis).
+        /// Keeps the grid level by not applying pitch, only yaw and roll correction.
+        /// Use this for conservative turns where you want to stay level while changing heading.
+        /// </summary>
+        /// <param name="worldTarget">The world position to turn toward</param>
+        /// <returns>True if orientation was applied</returns>
+        public bool LevelTurnToward(Vector3D worldTarget)
+        {
+            if (_reference == null || _activeGyro == null)
+                return false;
+
+            Vector3D gravity = _reference.GetNaturalGravity();
+            if (gravity.LengthSquared() < 0.1)
+            {
+                // No gravity - fall back to regular LookAt
+                return LookAt(worldTarget);
+            }
+
+            Vector3D myPosition = _reference.GetPosition();
+            Vector3D toTarget = worldTarget - myPosition;
+            
+            if (toTarget.LengthSquared() < 1)
+                return false;
+
+            // Project target direction onto horizontal plane
+            Vector3D worldUp = -Vector3D.Normalize(gravity);
+            Vector3D horizontalToTarget = toTarget - worldUp * Vector3D.Dot(toTarget, worldUp);
+            
+            if (horizontalToTarget.LengthSquared() < 0.001)
+            {
+                // Target is directly above/below - just maintain level, no yaw needed
+                return OrientLevel();
+            }
+
+            Vector3D desiredForward = Vector3D.Normalize(horizontalToTarget);
+            return OrientTowardLevel(desiredForward, worldUp);
+        }
+
+        /// <summary>
+        /// Orients the grid to face a horizontal direction while staying level.
+        /// Only applies yaw (rotation around gravity axis) and roll correction.
+        /// Pitch is actively driven to zero (level flight).
+        /// Uses gentler control than ApplyOrientationControl to avoid oscillation.
+        /// </summary>
+        /// <param name="horizontalDirection">The horizontal direction to face (should already be in horizontal plane)</param>
+        /// <param name="worldUp">The "up" direction (opposite of gravity)</param>
+        /// <returns>True if orientation was applied</returns>
+        private bool OrientTowardLevel(Vector3D horizontalDirection, Vector3D worldUp)
+        {
+            if (_reference == null || _activeGyro == null)
+                return false;
+
+            MatrixD refMatrix = _reference.WorldMatrix;
+            Vector3D currentForward = refMatrix.Forward;
+            Vector3D currentUp = refMatrix.Up;
+
+            // Project current forward onto horizontal plane for yaw calculation
+            Vector3D currentHorizontalForward = currentForward - worldUp * Vector3D.Dot(currentForward, worldUp);
+            if (currentHorizontalForward.LengthSquared() < 0.001)
+            {
+                currentHorizontalForward = refMatrix.Backward; // Pointing straight up/down, use any horizontal reference
+            }
+            currentHorizontalForward = Vector3D.Normalize(currentHorizontalForward);
+
+            // === YAW: Use atan2 for proper signed angle, with hysteresis for large turns ===
+            double yawCos = Vector3D.Dot(currentHorizontalForward, horizontalDirection);
+            Vector3D yawCross = Vector3D.Cross(currentHorizontalForward, horizontalDirection);
+            double yawSin = Vector3D.Dot(yawCross, worldUp);
+            
+            // Calculate facing angle for threshold checks
+            double facingAngleRad = Math.Acos(MathHelper.Clamp(yawCos, -1, 1));
+            double facingAngleDeg = facingAngleRad * 180.0 / Math.PI;
+            
+            // Handle the 180° instability with hysteresis
+            // Enter backwards mode when more than ~120° off (cos < -0.5)
+            // Stay locked until actually facing target within 30° (same as LEVEL_TURN_COMPLETE_THRESHOLD)
+            double yawError;
+            
+            if (_inBackwardsTurn)
+            {
+                // We're in the middle of a large turn - keep turning the locked direction
+                // Only exit when we're actually facing the target (within 30°)
+                if (facingAngleDeg < 30.0)
+                {
+                    // We're now facing the target - exit backwards turn mode
+                    _inBackwardsTurn = false;
+                    yawError = Math.Atan2(yawSin, yawCos);  // Fine control for final alignment
+                }
+                else
+                {
+                    // Still turning - keep the locked direction
+                    yawError = _lockedTurnSign * facingAngleRad;
+                }
+            }
+            else
+            {
+                // Normal mode - check if we should enter backwards turn mode
+                if (yawCos < -0.5)  // More than ~120° off
+                {
+                    // Enter backwards turn mode
+                    _inBackwardsTurn = true;
+                    // Lock to whichever direction has less turn, but if ambiguous (sin near 0), pick positive
+                    _lockedTurnSign = (yawSin >= 0) ? 1.0 : -1.0;
+                    yawError = _lockedTurnSign * facingAngleRad;
+                }
+                else
+                {
+                    // Normal case - use atan2
+                    yawError = Math.Atan2(yawSin, yawCos);
+                }
+            }
+
+            // === DEBUG OUTPUT ===
+            double yawErrorDeg = yawError * 180.0 / Math.PI;
+            _echo?.Invoke($"[GYRO] Angle:{facingAngleDeg:F0}° Cmd:{yawErrorDeg:F0}° Lock:{(_inBackwardsTurn ? "Y" : "N")}");
+
+            // === PITCH: Drive to zero (level flight) ===
+            // Current pitch is the angle of our forward from horizontal
+            double currentPitch = Math.Asin(MathHelper.Clamp(Vector3D.Dot(currentForward, worldUp), -1, 1));
+            double pitchError = -currentPitch;  // We want zero pitch, so error is negative of current
+
+            // === ROLL: Align up with gravity ===
+            double rollError = 0;
+            Vector3D worldUpProjected = worldUp - currentForward * Vector3D.Dot(worldUp, currentForward);
+            if (worldUpProjected.LengthSquared() > 0.001)
+            {
+                worldUpProjected = Vector3D.Normalize(worldUpProjected);
+                double rollDot = Vector3D.Dot(currentUp, worldUpProjected);
+                double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, worldUpProjected));
+                rollError = Math.Atan2(rollCross, rollDot);
+            }
+
+            // Use gentler proportional control for level turns to avoid oscillation
+            // Cap yaw rate to prevent overshoot
+            ApplyLevelTurnControl(pitchError, yawError, rollError);
+            return true;
+        }
+
+        /// <summary>
+        /// Simpler control specifically for level turns.
+        /// Uses proportional control only, no predictive braking, to avoid oscillation.
+        /// </summary>
+        private void ApplyLevelTurnControl(double pitchError, double yawError, double rollError)
+        {
+            // Simple proportional gains - gentle to avoid oscillation
+            const double PITCH_GAIN = 1.5;  // Level quickly but not aggressively
+            const double YAW_GAIN = 0.8;    // Gentle yaw to prevent overshoot
+            const double ROLL_GAIN = 1.0;   // Moderate roll correction
+            const double MAX_YAW_RATE = 0.5;  // rad/s - cap yaw to prevent overshoot
+            const double MAX_PITCH_RATE = 1.0;
+            const double MAX_ROLL_RATE = 0.5;
+
+            // Simple proportional control with rate limiting
+            double pitchCommand = MathHelper.Clamp(pitchError * PITCH_GAIN, -MAX_PITCH_RATE, MAX_PITCH_RATE);
+            double yawCommand = MathHelper.Clamp(yawError * YAW_GAIN, -MAX_YAW_RATE, MAX_YAW_RATE);
+            double rollCommand = MathHelper.Clamp(rollError * ROLL_GAIN, -MAX_ROLL_RATE, MAX_ROLL_RATE);
+
+            // Deadband
+            const double DEADBAND = 0.02;  // ~1 degree
+            if (Math.Abs(pitchError) < DEADBAND) pitchCommand = 0;
+            if (Math.Abs(yawError) < DEADBAND) yawCommand = 0;
+            if (Math.Abs(rollError) < DEADBAND) rollCommand = 0;
+
+            // DEBUG: Show what we're commanding
+            _echo?.Invoke($"[GYRO CMD] Yaw:{yawCommand:F2} Pitch:{pitchCommand:F2} Roll:{rollCommand:F2}");
+
+            Vector3D correction = new Vector3D(pitchCommand, yawCommand, rollCommand);
+            SetGyroOverride(correction);
+        }
+
+        /// <summary>
+        /// Orients the grid to be level with gravity (zero pitch, zero roll).
+        /// Maintains current heading.
+        /// </summary>
+        /// <returns>True if orientation was applied</returns>
+        public bool OrientLevel()
+        {
+            if (_reference == null || _activeGyro == null)
+                return false;
+
+            Vector3D gravity = _reference.GetNaturalGravity();
+            if (gravity.LengthSquared() < 0.1)
+                return false;
+
+            Vector3D worldUp = -Vector3D.Normalize(gravity);
+            MatrixD refMatrix = _reference.WorldMatrix;
+            Vector3D currentForward = refMatrix.Forward;
+            Vector3D currentUp = refMatrix.Up;
+
+            // Project current forward onto horizontal plane to maintain heading
+            Vector3D horizontalForward = currentForward - worldUp * Vector3D.Dot(currentForward, worldUp);
+            if (horizontalForward.LengthSquared() < 0.001)
+            {
+                horizontalForward = refMatrix.Backward;
+            }
+            horizontalForward = Vector3D.Normalize(horizontalForward);
+
+            return OrientTowardLevel(horizontalForward, worldUp);
+        }
+
+        /// <summary>
+        /// Checks if the grid is approximately level (within tolerance).
+        /// </summary>
+        /// <param name="toleranceDegrees">Tolerance in degrees (default 5)</param>
+        /// <returns>True if pitch and roll are within tolerance</returns>
+        public bool IsLevel(double toleranceDegrees = 5.0)
+        {
+            if (_reference == null)
+                return false;
+
+            Vector3D gravity = _reference.GetNaturalGravity();
+            if (gravity.LengthSquared() < 0.1)
+                return true;  // No gravity = always "level"
+
+            Vector3D worldUp = -Vector3D.Normalize(gravity);
+            MatrixD refMatrix = _reference.WorldMatrix;
+
+            // Check pitch: angle of forward from horizontal
+            double pitch = Math.Abs(Math.Asin(MathHelper.Clamp(Vector3D.Dot(refMatrix.Forward, worldUp), -1, 1)));
+            
+            // Check roll: angle of up from worldUp (projected onto plane perpendicular to forward)
+            Vector3D worldUpProjected = worldUp - refMatrix.Forward * Vector3D.Dot(worldUp, refMatrix.Forward);
+            double roll = 0;
+            if (worldUpProjected.LengthSquared() > 0.001)
+            {
+                worldUpProjected = Vector3D.Normalize(worldUpProjected);
+                roll = Math.Acos(MathHelper.Clamp(Vector3D.Dot(refMatrix.Up, worldUpProjected), -1, 1));
+            }
+
+            double toleranceRad = toleranceDegrees * Math.PI / 180.0;
+            return pitch < toleranceRad && roll < toleranceRad;
+        }
+
+        /// <summary>
+        /// Checks if the grid is facing approximately toward a target (yaw only, ignoring pitch).
+        /// </summary>
+        /// <param name="worldTarget">Target position to check</param>
+        /// <param name="toleranceDegrees">Tolerance in degrees (default 10)</param>
+        /// <returns>True if facing within tolerance</returns>
+        public bool IsFacingTarget(Vector3D worldTarget, double toleranceDegrees = 10.0)
+        {
+            if (_reference == null)
+                return false;
+
+            Vector3D gravity = _reference.GetNaturalGravity();
+            Vector3D worldUp = gravity.LengthSquared() > 0.1 
+                ? -Vector3D.Normalize(gravity) 
+                : _reference.WorldMatrix.Up;
+
+            Vector3D myPosition = _reference.GetPosition();
+            Vector3D toTarget = worldTarget - myPosition;
+            
+            // Project both onto horizontal plane
+            Vector3D horizontalToTarget = toTarget - worldUp * Vector3D.Dot(toTarget, worldUp);
+            Vector3D horizontalForward = _reference.WorldMatrix.Forward - worldUp * Vector3D.Dot(_reference.WorldMatrix.Forward, worldUp);
+
+            if (horizontalToTarget.LengthSquared() < 0.001 || horizontalForward.LengthSquared() < 0.001)
+                return true;  // Target directly above/below or we're pointing straight up
+
+            horizontalToTarget = Vector3D.Normalize(horizontalToTarget);
+            horizontalForward = Vector3D.Normalize(horizontalForward);
+
+            double angle = Math.Acos(MathHelper.Clamp(Vector3D.Dot(horizontalForward, horizontalToTarget), -1, 1));
+            double angleDeg = angle * 180.0 / Math.PI;
+            double toleranceRad = toleranceDegrees * Math.PI / 180.0;
+            
+            bool facing = angle < toleranceRad;
+            _echo?.Invoke($"[FACING] Angle:{angleDeg:F1}° Tol:{toleranceDegrees}° => {(facing ? "YES" : "NO")}");
+            
+            return facing;
         }
 
         /// <summary>
