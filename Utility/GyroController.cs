@@ -625,8 +625,9 @@ namespace IngameScript
         }
 
         /// <summary>
-        /// Applies rotation commands to all available gyros for maximum turning authority.
-        /// Each gyro's orientation is accounted for individually.
+        /// Applies rotation commands to gyros.
+        /// Uses single-gyro mode if a pilot is in control (allows pilot override).
+        /// Uses all gyros when autonomous for maximum turning authority.
         /// </summary>
         private void SetGyroOverride(Vector3D localRotation)
         {
@@ -639,7 +640,10 @@ namespace IngameScript
             Vector3D rotationVec = new Vector3D(-localRotation.X, localRotation.Y, localRotation.Z);
             Vector3D worldRotation = Vector3D.TransformNormal(rotationVec, refMatrix);
 
-            // Apply to ALL gyros for maximum turning power
+            // If pilot is in control, use only one gyro (allows pilot to override other gyros)
+            // If autonomous, use all gyros for maximum turning power
+            bool singleGyroMode = _reference.IsUnderControl;
+
             foreach (var gyro in _gyros)
             {
                 if (gyro == null || gyro.Closed || !gyro.IsFunctional || !gyro.Enabled)
@@ -652,6 +656,10 @@ namespace IngameScript
                 gyro.Pitch = (float)gyroLocal.X;
                 gyro.Yaw = (float)gyroLocal.Y;
                 gyro.Roll = (float)gyroLocal.Z;
+
+                // In single-gyro mode, stop after the first functional gyro
+                if (singleGyroMode)
+                    break;
             }
         }
 
