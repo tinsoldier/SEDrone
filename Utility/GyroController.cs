@@ -19,7 +19,6 @@ namespace IngameScript
         
         // === Gyro hardware ===
         private List<IMyGyro> _gyros = new List<IMyGyro>();
-        private IMyGyro _activeGyro;  // Single gyro for consistent control authority
         
         // === Predictive braking state (per-axis tracking) ===
         private double _lastPitchError;
@@ -74,7 +73,6 @@ namespace IngameScript
             _gyros = gyros;
             _echo = echo;
             _orientationPID = new PIDController3D(pidGains);
-            SelectActiveGyro();
         }
         
         /// <summary>
@@ -114,7 +112,7 @@ namespace IngameScript
         /// <returns>True if orientation was applied</returns>
         public bool MatchCompassHeading(Vector3D leaderForward, Vector3D leaderUp)
         {
-            if (_reference == null || _activeGyro == null)
+            if (_reference == null || _gyros.Count == 0)
                 return false;
 
             Vector3D gravity = _reference.GetNaturalGravity();
@@ -142,7 +140,7 @@ namespace IngameScript
         /// <returns>True if orientation was applied</returns>
         public bool LevelTurnToward(Vector3D worldTarget)
         {
-            if (_reference == null || _activeGyro == null)
+            if (_reference == null || _gyros.Count == 0)
                 return false;
 
             Vector3D gravity = _reference.GetNaturalGravity();
@@ -183,7 +181,7 @@ namespace IngameScript
         /// <returns>True if orientation was applied</returns>
         private bool OrientTowardLevel(Vector3D horizontalDirection, Vector3D worldUp)
         {
-            if (_reference == null || _activeGyro == null)
+            if (_reference == null || _gyros.Count == 0)
                 return false;
 
             MatrixD refMatrix = _reference.WorldMatrix;
@@ -311,7 +309,7 @@ namespace IngameScript
         /// <returns>True if orientation was applied</returns>
         public bool OrientLevel()
         {
-            if (_reference == null || _activeGyro == null)
+            if (_reference == null || _gyros.Count == 0)
                 return false;
 
             Vector3D gravity = _reference.GetNaturalGravity();
@@ -414,7 +412,7 @@ namespace IngameScript
         /// <returns>True if orientation was applied, false if unable (no gyro, invalid target)</returns>
         public bool LookAt(Vector3D worldTarget)
         {
-            if (_reference == null || _activeGyro == null)
+            if (_reference == null || _gyros.Count == 0)
                 return false;
 
             Vector3D myPosition = _reference.GetPosition();
@@ -434,7 +432,7 @@ namespace IngameScript
         /// <returns>True if orientation was applied</returns>
         public bool OrientToward(Vector3D worldDirection)
         {
-            if (_reference == null || _activeGyro == null)
+            if (_reference == null || _gyros.Count == 0)
                 return false;
                 
             if (worldDirection.LengthSquared() < 0.001)
@@ -626,41 +624,49 @@ namespace IngameScript
             return closing && timeToStop > timeToTarget * 1.2 && Math.Abs(currentError) > ALIGNMENT_DEADBAND * 2;
         }
 
+        /// <summary>
+        /// Applies rotation commands to all available gyros for maximum turning authority.
+        /// Each gyro's orientation is accounted for individually.
+        /// </summary>
         private void SetGyroOverride(Vector3D localRotation)
         {
-            if (_activeGyro == null || !_activeGyro.IsFunctional)
-            {
-                SelectActiveGyro();
-                if (_activeGyro == null) return;
-            }
+            if (_reference == null || _gyros.Count == 0)
+                return;
 
             MatrixD refMatrix = _reference.WorldMatrix;
             
-            // Match SkunkBot exactly: negate pitch at input, not yaw/roll at output
+            // Negate pitch at input (SE gyro convention)
             Vector3D rotationVec = new Vector3D(-localRotation.X, localRotation.Y, localRotation.Z);
             Vector3D worldRotation = Vector3D.TransformNormal(rotationVec, refMatrix);
-            Vector3D gyroLocal = Vector3D.TransformNormal(worldRotation, MatrixD.Transpose(_activeGyro.WorldMatrix));
 
-            _activeGyro.GyroOverride = true;
-            _activeGyro.Pitch = (float)gyroLocal.X;
-            _activeGyro.Yaw = (float)gyroLocal.Y;
-            _activeGyro.Roll = (float)gyroLocal.Z;
+            // Apply to ALL gyros for maximum turning power
+            foreach (var gyro in _gyros)
+            {
+                if (gyro == null || gyro.Closed || !gyro.IsFunctional || !gyro.Enabled)
+                    continue;
+
+                // Transform to this gyro's local space
+                Vector3D gyroLocal = Vector3D.TransformNormal(worldRotation, MatrixD.Transpose(gyro.WorldMatrix));
+
+                gyro.GyroOverride = true;
+                gyro.Pitch = (float)gyroLocal.X;
+                gyro.Yaw = (float)gyroLocal.Y;
+                gyro.Roll = (float)gyroLocal.Z;
+            }
         }
 
         /// <summary>
-        /// Selects a single active gyro for consistent control authority.
+        /// Returns the number of functional, enabled gyros available.
         /// </summary>
-        private void SelectActiveGyro()
+        private int GetActiveGyroCount()
         {
-            _activeGyro = null;
+            int count = 0;
             foreach (var gyro in _gyros)
             {
-                if (gyro != null && gyro.IsFunctional && !gyro.Closed && gyro.Enabled)
-                {
-                    _activeGyro = gyro;
-                    break;  // Use only one gyro for consistent behavior
-                }
+                if (gyro != null && !gyro.Closed && gyro.IsFunctional && gyro.Enabled)
+                    count++;
             }
+            return count;
         }
 
         /// <summary>
