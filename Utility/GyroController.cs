@@ -84,6 +84,16 @@ namespace IngameScript
         }
 
         /// <summary>
+        /// Resets the backwards turn lock state.
+        /// Call this when switching orientation modes to prevent stale lock state.
+        /// </summary>
+        public void ResetTurnLock()
+        {
+            _inBackwardsTurn = false;
+            _lockedTurnSign = 1.0;
+        }
+
+        /// <summary>
         /// Sets the time delta for this update tick.
         /// Call this each tick before LookAt().
         /// </summary>

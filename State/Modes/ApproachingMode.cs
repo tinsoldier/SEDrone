@@ -240,7 +240,7 @@ namespace IngameScript
         /// <summary>
         /// Conservative level-first approach:
         /// 1. Level the grid
-        /// 2. Yaw to face target (horizontal only)
+        /// 2. Yaw to face target (horizontal only) - SKIP if target is mostly above/below
         /// 3. Approach horizontally
         /// 4. Adjust altitude
         /// </summary>
@@ -255,6 +255,14 @@ namespace IngameScript
             double elevationDelta = Vector3D.Dot(toFormation, worldUp);
             Vector3D horizontalToFormation = toFormation - worldUp * elevationDelta;
             double horizontalDistance = horizontalToFormation.Length();
+            double verticalDistance = Math.Abs(elevationDelta);
+            
+            // Target is "mostly vertical" if vertical component is more than 3x the horizontal component
+            // AND horizontal distance is small enough that heading becomes unstable
+            bool targetMostlyVertical = (verticalDistance > horizontalDistance * 3.0) && (horizontalDistance < 10.0);
+            
+            // Debug output
+            brain.Echo?.Invoke($"[APPROACH] H:{horizontalDistance:F1}m V:{verticalDistance:F1}m Vert:{(targetMostlyVertical ? "Y" : "N")}");
 
             // Phase state machine
             switch (_levelPhase)
@@ -266,14 +274,44 @@ namespace IngameScript
                     
                     if (brain.Gyros.IsLevel(5.0))
                     {
-                        _levelPhase = LevelPhase.Turning;
+                        // If target is mostly above/below, skip turning and go straight to altitude adjust
+                        if (targetMostlyVertical)
+                        {
+                            _levelPhase = LevelPhase.AltitudeAdjust;
+                        }
+                        else
+                        {
+                            _levelPhase = LevelPhase.Turning;
+                        }
                     }
                     break;
 
                 case LevelPhase.Turning:
+                    // If target has become mostly vertical, skip to altitude adjust
+                    if (targetMostlyVertical)
+                    {
+                        _levelPhase = LevelPhase.AltitudeAdjust;
+                        break;
+                    }
+                    
                     // Turn to face target (yaw only, stay level)
+                    // Maintain position while turning to prevent drift-induced heading instability
                     brain.Gyros.LevelTurnToward(formationPos);
-                    brain.Thrusters.Release();  // Don't thrust while turning
+                    
+                    // Keep thrusters active to maintain position (prevents drift that causes spinning)
+                    Vector3D hoverVelocity = brain.Navigator.CalculateDesiredVelocity(
+                        brain.Position,
+                        brain.Velocity,
+                        brain.Position,  // Target is current position (hover in place)
+                        brain.LastLeaderState.Velocity,
+                        safeSpeed * 0.5
+                    );
+                    brain.Thrusters.MoveToward(
+                        brain.Position,
+                        hoverVelocity,
+                        brain.Config.MaxSpeed,
+                        brain.Config.PrecisionRadius
+                    );
                     
                     if (brain.Gyros.IsFacingTarget(formationPos, LEVEL_TURN_COMPLETE_THRESHOLD))
                     {
@@ -282,6 +320,13 @@ namespace IngameScript
                     break;
 
                 case LevelPhase.Approaching:
+                    // If target has become mostly vertical, skip to altitude adjust
+                    if (targetMostlyVertical)
+                    {
+                        _levelPhase = LevelPhase.AltitudeAdjust;
+                        break;
+                    }
+                    
                     // Move horizontally toward target, staying level
                     brain.Gyros.LevelTurnToward(formationPos);
                     
@@ -313,10 +358,19 @@ namespace IngameScript
                     break;
 
                 case LevelPhase.AltitudeAdjust:
-                    // Now handle altitude while maintaining level flight
-                    brain.Gyros.LevelTurnToward(formationPos);
+                    // When mostly vertical, just stay level - don't try to face the target
+                    // The horizontal component is too small and causes unstable heading
+                    if (targetMostlyVertical)
+                    {
+                        brain.Gyros.ResetTurnLock();  // Clear any stale turn lock
+                        brain.Gyros.OrientLevel();   // Just stay level, don't turn
+                    }
+                    else
+                    {
+                        brain.Gyros.LevelTurnToward(formationPos);
+                    }
                     
-                    // Full approach now that we're close horizontally
+                    // Full approach now that we're close horizontally (or adjusting altitude)
                     Vector3D finalVelocity = brain.Navigator.CalculateDesiredVelocity(
                         brain.Position,
                         brain.Velocity,

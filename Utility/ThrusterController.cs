@@ -113,6 +113,13 @@ namespace IngameScript
             _echo = echo;
             
             RefreshThrustMap();
+            
+            // Auto-detect vertical authority: if no hover pads found, take full vertical control
+            if (HoverPadCount == 0 && _config.VerticalAuthority == 0.0)
+            {
+                _config.VerticalAuthority = 1.0;
+                _echo?.Invoke("[THRUST] No hover pads detected, enabling vertical control");
+            }
         }
 
         /// <summary>
@@ -360,17 +367,16 @@ namespace IngameScript
             // Calculate velocity error
             Vector3D velocityError = desiredVelocity - velocityShip;
             
-            // Convert to force: F = m * a
+            // Convert to desired NET force: F = m * a
+            // This is the NET force we want (thrust + gravity combined)
             Vector3D desiredForce = velocityError * _shipMass / _deltaTime;
             
-            // Counteract gravity (scaled by vertical authority)
-            Vector3D gravityCompensation = gravityShip * _shipMass * _config.VerticalAuthority;
-            desiredForce -= gravityCompensation;
-            
             // Apply axis authority
+            // Note: Gravity compensation is now handled in ApplyForce which calculates
+            // the required thrust to achieve the desired net force
             desiredForce = _config.ApplyAuthority(desiredForce);
             
-            // Apply thrust
+            // Apply thrust (ApplyForce will account for gravity internally)
             ApplyForce(desiredForce);
         }
 
@@ -383,16 +389,105 @@ namespace IngameScript
             if (_controllableThrusters.Count == 0)
                 return;
             
-            // Get available thrust in each direction
-            Vector3D availableThrust = GetAvailableThrust(localForce);
+            // Get gravity in ship space for "gravity as propulsion" calculations
+            Vector3D gravityShip = Vector3D.Zero;
+            if (_reference != null)
+            {
+                gravityShip = WorldToShipDirection(_reference.GetNaturalGravity());
+            }
+            Vector3D gravityForce = gravityShip * _shipMass;
+            
+            // Calculate the THRUST needed to achieve the desired NET force
+            // Net force = Thrust + Gravity, so Thrust = NetForce - Gravity
+            Vector3D requiredThrust = localForce - gravityForce;
+            
+            // Get available thrust in each direction (based on required thrust direction)
+            Vector3D availableThrust = GetAvailableThrust(requiredThrust);
             
             // Calculate what percentage of max thrust we need in each axis
+            // This now properly handles "reduce thrust to let gravity help"
             float xRatio = availableThrust.X > 0 ? 
-                (float)Math.Min(1.0, Math.Abs(localForce.X / availableThrust.X)) : 0;
+                (float)MathHelper.Clamp(Math.Abs(requiredThrust.X / availableThrust.X), 0, 1) : 0;
             float yRatio = availableThrust.Y > 0 ? 
-                (float)Math.Min(1.0, Math.Abs(localForce.Y / availableThrust.Y)) : 0;
+                (float)MathHelper.Clamp(Math.Abs(requiredThrust.Y / availableThrust.Y), 0, 1) : 0;
             float zRatio = availableThrust.Z > 0 ? 
-                (float)Math.Min(1.0, Math.Abs(localForce.Z / availableThrust.Z)) : 0;
+                (float)MathHelper.Clamp(Math.Abs(requiredThrust.Z / availableThrust.Z), 0, 1) : 0;
+            
+            // Handle "gravity as propulsion" case:
+            // If we need negative thrust on an axis (reduce thrust to let gravity work)
+            // but only have thrusters in the positive direction, calculate how much to throttle back
+            bool useGravityY = false;
+            float gravityAssistedYRatio = 0f;
+            
+            // Debug: Log the force calculations
+            _echo?.Invoke($"[THRUST] net.Y:{localForce.Y:F0}N grav.Y:{gravityForce.Y:F0}N req.Y:{requiredThrust.Y:F0}N");
+            
+            // Check if we need to go "down" (negative Y thrust) but only have "up" thrusters
+            double upThrust = _thrustMap[1, 0];  // Positive Y thrust
+            double downThrust = _thrustMap[1, 1]; // Negative Y thrust
+            
+            if (requiredThrust.Y < 0 && downThrust < 0.01 && upThrust > 0.01)
+            {
+                // We need downward net force but have no downward thrusters
+                // Calculate how much upward thrust is needed to achieve the desired descent rate
+                // Required thrust is negative, gravity force is negative (pulling down)
+                // We need: requiredThrust = actualThrust + gravityForce
+                // So: actualThrust = requiredThrust - gravityForce
+                // If actualThrust is negative, we can't achieve it - just provide 0 thrust
+                // If actualThrust is positive but less than hover, we provide partial thrust
+                
+                // How much upward thrust would we need to hover? (counteract gravity)
+                double hoverThrust = -gravityForce.Y; // Positive value if gravity is down
+                
+                // What thrust do we actually need?
+                // requiredThrust.Y is negative (want net downward force)
+                // The actual thrust needed is: requiredThrust.Y - gravityForce.Y
+                // But wait, requiredThrust already accounts for this (see calculation above)
+                // Actually requiredThrust.Y = localForce.Y - gravityForce.Y
+                // If localForce.Y = -1000N (want to accelerate down) and gravityForce.Y = -10000N (gravity)
+                // Then requiredThrust.Y = -1000 - (-10000) = 9000N (we need 9000N up to only accelerate down at desired rate)
+                
+                // So if requiredThrust.Y > 0 but we calculated it as needing "down" thrust direction,
+                // that means we need SOME upward thrust, but less than hover
+                // Actually let me reconsider...
+                
+                // Let's recalculate: the issue is localForce is the NET force we want
+                // requiredThrust = localForce - gravityForce = NET - GRAVITY
+                // If NET is -1000N (down) and GRAVITY is -10000N (down)
+                // Then requiredThrust = -1000 - (-10000) = +9000N (we need 9000N of UPWARD thrust)
+                
+                // So if requiredThrust.Y > 0, we actually need upward thrust (just less than hover)
+                // If requiredThrust.Y < 0, we need downward thrust which we don't have - provide 0 and let gravity work
+                
+                useGravityY = true;
+                
+                // EXPERIMENT: Disable dampeners during gravity-assisted descent
+                // This prevents dampeners from fighting our reduced thrust
+                if (_reference != null)
+                {
+                    _reference.DampenersOverride = false;
+                }
+                
+                if (requiredThrust.Y >= 0)
+                {
+                    // We need some upward thrust, but less than full hover
+                    gravityAssistedYRatio = (float)MathHelper.Clamp(requiredThrust.Y / upThrust, 0, 1);
+                }
+                else
+                {
+                    // We need more downward force than gravity provides - can't achieve it
+                    // Just provide 0 thrust and let gravity do its best
+                    gravityAssistedYRatio = 0f;
+                }
+                
+                _echo?.Invoke($"[THRUST] GRAVITY ASSIST: ratio:{gravityAssistedYRatio:F2} dampeners:OFF");
+            }
+            
+            // Re-enable dampeners if not using gravity assist
+            if (!useGravityY && _reference != null)
+            {
+                _reference.DampenersOverride = true;
+            }
             
             foreach (var thruster in _controllableThrusters)
             {
@@ -410,13 +505,25 @@ namespace IngameScript
                 
                 float overridePercent = 0f;
                 
-                // Check if this thruster helps in the desired direction
-                if (Math.Abs(roundedDir.X) > 0.1 && Math.Sign(roundedDir.X) == Math.Sign(localForce.X))
+                // Handle Y-axis with gravity assistance
+                if (useGravityY && Math.Abs(roundedDir.Y) > 0.1 && roundedDir.Y > 0)
+                {
+                    // This is an upward thruster and we're using gravity-assisted descent
+                    overridePercent = gravityAssistedYRatio;
+                }
+                // Normal thrust application for other cases
+                else if (Math.Abs(roundedDir.X) > 0.1 && Math.Sign(roundedDir.X) == Math.Sign(requiredThrust.X))
+                {
                     overridePercent = xRatio;
-                else if (Math.Abs(roundedDir.Y) > 0.1 && Math.Sign(roundedDir.Y) == Math.Sign(localForce.Y))
+                }
+                else if (Math.Abs(roundedDir.Y) > 0.1 && Math.Sign(roundedDir.Y) == Math.Sign(requiredThrust.Y))
+                {
                     overridePercent = yRatio;
-                else if (Math.Abs(roundedDir.Z) > 0.1 && Math.Sign(roundedDir.Z) == Math.Sign(localForce.Z))
+                }
+                else if (Math.Abs(roundedDir.Z) > 0.1 && Math.Sign(roundedDir.Z) == Math.Sign(requiredThrust.Z))
+                {
                     overridePercent = zRatio;
+                }
                 
                 thruster.ThrustOverridePercentage = overridePercent;
             }
