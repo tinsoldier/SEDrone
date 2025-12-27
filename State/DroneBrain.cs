@@ -53,6 +53,8 @@ namespace IngameScript
 
         // === WcPbApiBridge integration for missile interception ===
         private WcPbApiBridgeClient _wcBridge;
+        private Program.WcPbApi _wcApi;  // Fallback when bridge mod not available
+        private bool _hasPositionTracking;  // True if we can get missile positions
         private List<Vector3D> _projectilePositions = new List<Vector3D>();
         private List<Vector3D> _tempPositions = new List<Vector3D>();  // Temp buffer for API calls
         
@@ -60,6 +62,11 @@ namespace IngameScript
         /// Number of smart projectiles currently detected.
         /// </summary>
         public int ProjectileCount { get; private set; }
+        
+        /// <summary>
+        /// Whether we have position tracking (bridge mod) or just count (standard WcPbApi).
+        /// </summary>
+        public bool HasPositionTracking => _hasPositionTracking;
 
         public void Initialize(BrainContext context)
         {
@@ -91,15 +98,45 @@ namespace IngameScript
             // Initialize formation navigator
             Navigator = new FormationNavigator(context.Config);
 
-            // Initialize WcPbApiBridge for missile tracking (optional - mod may not be present)
+            // Initialize WeaponCore APIs for missile tracking
+            // Try WcPbApiBridge first (provides positions), fall back to standard WcPbApi (count only)
+            _hasPositionTracking = false;
             _wcBridge = new WcPbApiBridgeClient();
-            if (_wcBridge.Activate(context.Me))
+            
+            try
             {
-                context.Echo?.Invoke("[Drone] WcPbApiBridge connected");
+                if (_wcBridge.Activate(context.Me))
+                {
+                    _hasPositionTracking = true;
+                    context.Echo?.Invoke("[Drone] WcPbApiBridge connected (position tracking enabled)");
+                }
             }
-            else
+            catch
             {
-                context.Echo?.Invoke("[Drone] WcPbApiBridge not available (mod not installed?)");
+                // Bridge activation failed - continue to fallback
+            }
+            
+            if (!_hasPositionTracking)
+            {
+                // Try standard WcPbApi as fallback
+                _wcApi = new Program.WcPbApi();
+                try
+                {
+                    if (_wcApi.Activate(context.Me))
+                    {
+                        context.Echo?.Invoke("[Drone] WcPbApi connected (count only, will nose-up on threat)");
+                    }
+                    else
+                    {
+                        _wcApi = null;
+                        context.Echo?.Invoke("[Drone] No WeaponCore API available - intercept mode disabled");
+                    }
+                }
+                catch
+                {
+                    _wcApi = null;
+                    context.Echo?.Invoke("[Drone] WeaponCore not detected - intercept mode disabled");
+                }
             }
 
             // Set initial mode
@@ -206,22 +243,78 @@ namespace IngameScript
 
         /// <summary>
         /// Checks for incoming missile threats and handles mode interruption.
-        /// Uses WcPbApiBridge to detect projectiles locked onto drone or leader.
+        /// Uses WcPbApiBridge (with positions) or falls back to WcPbApi (count only).
         /// </summary>
         private void CheckForThreats()
         {
-            // Skip if bridge not available or WC not ready
-            if (!_wcBridge.IsReady || !_wcBridge.IsWcApiReady)
+            ProjectileCount = 0;
+            _projectilePositions.Clear();
+            
+            long droneEntityId = Context.Me.CubeGrid.EntityId;
+            long leaderEntityId = HasLeaderContact ? LastLeaderState.EntityId : 0;
+            
+            if (_hasPositionTracking && _wcBridge != null && _wcBridge.IsReady && _wcBridge.IsWcApiReady)
             {
-                ProjectileCount = 0;
+                // === Full position tracking via WcPbApiBridge ===
+                CheckThreatsWithPositions(droneEntityId, leaderEntityId);
+            }
+            else if (_wcApi != null)
+            {
+                // === Fallback: count-only via standard WcPbApi ===
+                CheckThreatsCountOnly(droneEntityId, leaderEntityId);
+            }
+            else
+            {
+                // No WC API available - can't detect missiles
                 return;
             }
             
-            // Collect projectiles targeting both drone and leader
-            _projectilePositions.Clear();
-            
+            // Handle mode transitions based on threat state
+            if (ProjectileCount > 0)
+            {
+                var interceptMode = _currentMode as InterceptMode;
+                if (interceptMode != null)
+                {
+                    // Already in intercept mode - update
+                    if (_hasPositionTracking && _projectilePositions.Count > 0)
+                    {
+                        interceptMode.UpdateProjectilePositions(_projectilePositions);
+                    }
+                    else
+                    {
+                        interceptMode.UpdateProjectileCount(ProjectileCount);
+                    }
+                }
+                else
+                {
+                    // Not in intercept mode - transition immediately
+                    // Default to ClosestMissileAimStrategy for aggressive point defense
+                    var newMode = new InterceptMode(new ClosestMissileAimStrategy(), ProjectileCount);
+                    newMode.SetHasPositionTracking(_hasPositionTracking);
+                    TransitionTo(newMode);
+                    
+                    if (_hasPositionTracking && _projectilePositions.Count > 0)
+                    {
+                        newMode.UpdateProjectilePositions(_projectilePositions);
+                    }
+                }
+            }
+            else
+            {
+                // No threats
+                if (_currentMode is InterceptMode)
+                {
+                    TransitionTo(new SearchingMode());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Checks for threats using WcPbApiBridge (provides missile positions).
+        /// </summary>
+        private void CheckThreatsWithPositions(long droneEntityId, long leaderEntityId)
+        {
             // Get projectiles targeting drone
-            long droneEntityId = Context.Me.CubeGrid.EntityId;
             _tempPositions.Clear();
             int droneCount = _wcBridge.GetProjectilesLockedOnPos(droneEntityId, _tempPositions);
             if (droneCount > 0)
@@ -230,10 +323,10 @@ namespace IngameScript
             }
             
             // Get projectiles targeting leader (if we have contact)
-            if (HasLeaderContact && LastLeaderState.EntityId != 0)
+            if (leaderEntityId != 0)
             {
                 _tempPositions.Clear();
-                int leaderCount = _wcBridge.GetProjectilesLockedOnPos(LastLeaderState.EntityId, _tempPositions);
+                int leaderCount = _wcBridge.GetProjectilesLockedOnPos(leaderEntityId, _tempPositions);
                 if (leaderCount > 0)
                 {
                     // Add leader-targeted missiles, avoiding duplicates
@@ -242,7 +335,7 @@ namespace IngameScript
                         bool isDuplicate = false;
                         foreach (var existing in _projectilePositions)
                         {
-                            if (Vector3D.DistanceSquared(pos, existing) < 1.0)  // Within 1m = same missile
+                            if (Vector3D.DistanceSquared(pos, existing) < 1.0)
                             {
                                 isDuplicate = true;
                                 break;
@@ -257,35 +350,33 @@ namespace IngameScript
             }
             
             ProjectileCount = _projectilePositions.Count;
+        }
+
+        /// <summary>
+        /// Checks for threats using standard WcPbApi (count only, no positions).
+        /// </summary>
+        private void CheckThreatsCountOnly(long droneEntityId, long leaderEntityId)
+        {
+            int totalCount = 0;
             
-            // Handle mode transitions based on threat state
-            if (ProjectileCount > 0)
+            // Check drone
+            var droneResult = _wcApi.GetProjectilesLockedOn(droneEntityId);
+            if (droneResult.Item1)  // Item1 = isLockedOn
             {
-                // Threats detected
-                var interceptMode = _currentMode as InterceptMode;
-                if (interceptMode != null)
+                totalCount += droneResult.Item2;  // Item2 = count
+            }
+            
+            // Check leader
+            if (leaderEntityId != 0)
+            {
+                var leaderResult = _wcApi.GetProjectilesLockedOn(leaderEntityId);
+                if (leaderResult.Item1)
                 {
-                    // Already in intercept mode - update with projectile positions
-                    interceptMode.UpdateProjectilePositions(_projectilePositions);
-                }
-                else
-                {
-                    // Not in intercept mode - transition immediately
-                    var newMode = new InterceptMode(ProjectileCount);
-                    TransitionTo(newMode);
-                    // Pass projectile data to the new mode
-                    newMode.UpdateProjectilePositions(_projectilePositions);
+                    totalCount += leaderResult.Item2;
                 }
             }
-            else
-            {
-                // No threats
-                if (_currentMode is InterceptMode)
-                {
-                    // Was in intercept mode - threat cleared, fresh start
-                    TransitionTo(new SearchingMode());
-                }
-            }
+            
+            ProjectileCount = totalCount;
         }
 
         /// <summary>

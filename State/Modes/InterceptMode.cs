@@ -6,10 +6,15 @@ namespace IngameScript
 {
     /// <summary>
     /// Missile interception mode - activates when smart projectiles are detected.
-    /// Orients the drone toward the bulk of incoming missiles so gimbal turrets can engage.
+    /// Orients the drone toward incoming missiles so gimbal turrets can engage.
     /// 
-    /// Uses weighted centroid calculation with outlier rejection to find the
-    /// "richest target mass" rather than chasing individual missiles.
+    /// Uses pluggable aiming strategies:
+    /// - CentroidAimStrategy: Aims at weighted center of mass (good for swarms)
+    /// - ClosestMissileAimStrategy: Tracks nearest missile (aggressive point defense)
+    /// 
+    /// Supports two tracking modes:
+    /// - Position tracking (WcPbApiBridge): Uses strategy to calculate aim direction
+    /// - Count only (WcPbApi fallback): Noses up by configurable angle for best coverage
     /// 
     /// Transitions:
     /// - → SearchingMode: When no more projectiles detected (fresh start)
@@ -17,24 +22,41 @@ namespace IngameScript
     public class InterceptMode : IDroneMode
     {
         // === Configuration ===
-        private const double OUTLIER_ANGLE_THRESHOLD = 60.0;  // degrees - missiles beyond this from centroid are outliers
-        private const double BEHIND_WEIGHT_FACTOR = 0.1;      // Weight multiplier for missiles behind us
-        private const double MIN_DISTANCE = 50.0;             // Ignore missiles closer than this (probably past us)
-        private const double MAX_DISTANCE = 2000.0;           // Ignore missiles further than this (not immediate threat)
+        private const double BLEND_RAMP_SECONDS = 0.8;        // Time to fully transition from nose-up to strategy tracking
+        
+        // === Strategy ===
+        private readonly IInterceptAimStrategy _aimStrategy;
         
         // === State ===
         private int _projectileCount;
+        private bool _hasPositionTracking;  // True if we have missile positions
         private List<Vector3D> _projectilePositions = new List<Vector3D>();
         private Vector3D _lastThreatDirection = Vector3D.Zero;
+        private Vector3D _initialNoseUpDirection = Vector3D.Zero;  // Captured at mode entry - does not update
+        private Vector3D _worldUp = Vector3D.Up;  // Cached world up direction
+        private double _blendFactor = 0.0;  // 0 = pure nose-up, 1 = pure strategy tracking
+        private DateTime _modeEntryTime;    // When we entered intercept mode
         
-        public string Name => $"Intercept ({_projectileCount} missiles)";
+        public string Name => $"Intercept[{_aimStrategy.Name}] ({_projectileCount} missiles)";
 
         /// <summary>
-        /// Creates InterceptMode with current projectile count.
+        /// Creates InterceptMode with specified aiming strategy.
         /// </summary>
-        public InterceptMode(int projectileCount = 0)
+        /// <param name="aimStrategy">Strategy for calculating aim direction. Defaults to ClosestMissileAimStrategy.</param>
+        /// <param name="projectileCount">Initial projectile count.</param>
+        public InterceptMode(IInterceptAimStrategy aimStrategy = null, int projectileCount = 0)
         {
+            _aimStrategy = aimStrategy ?? new ClosestMissileAimStrategy();
             _projectileCount = projectileCount;
+            _hasPositionTracking = false;
+        }
+
+        /// <summary>
+        /// Sets whether we have position tracking available.
+        /// </summary>
+        public void SetHasPositionTracking(bool hasTracking)
+        {
+            _hasPositionTracking = hasTracking;
         }
 
         /// <summary>
@@ -45,28 +67,105 @@ namespace IngameScript
             _projectilePositions.Clear();
             _projectilePositions.AddRange(positions);
             _projectileCount = positions.Count;
+            _hasPositionTracking = true;
         }
 
         /// <summary>
-        /// Legacy method for compatibility - just updates count.
+        /// Updates just the count (no positions available).
         /// </summary>
         public void UpdateProjectileCount(int count)
         {
             _projectileCount = count;
+            _projectilePositions.Clear();  // Clear any stale positions
         }
 
         public void Enter(DroneBrain brain)
         {
             brain.Echo?.Invoke($"[{Name}] THREAT DETECTED - Entering intercept mode");
             _lastThreatDirection = brain.Context.Reference.WorldMatrix.Forward;
+            _modeEntryTime = DateTime.UtcNow;
+            _blendFactor = 0.0;  // Start with pure nose-up
+            
+            // Capture initial nose-up direction - this is FIXED for the entire blend ramp
+            // so the drone has a stable starting point to blend from
+            CaptureInitialNoseUpDirection(brain);
+        }
+
+        /// <summary>
+        /// Captures the initial nose-up direction at mode entry.
+        /// This is a FIXED direction used as the starting point for blending.
+        /// It does NOT update as the drone turns - that's the whole point.
+        /// </summary>
+        private void CaptureInitialNoseUpDirection(DroneBrain brain)
+        {
+            Vector3D gravity = brain.Context.Reference.GetNaturalGravity();
+            if (gravity.LengthSquared() < 0.1)
+            {
+                // No gravity - just use current forward
+                _initialNoseUpDirection = brain.Context.Reference.WorldMatrix.Forward;
+                _worldUp = Vector3D.Up;
+                return;
+            }
+            
+            _worldUp = -Vector3D.Normalize(gravity);
+            Vector3D currentForward = brain.Context.Reference.WorldMatrix.Forward;
+            
+            // Project forward onto horizontal plane
+            Vector3D horizontalForward = currentForward - _worldUp * Vector3D.Dot(currentForward, _worldUp);
+            if (horizontalForward.LengthSquared() < 0.001)
+            {
+                horizontalForward = brain.Context.Reference.WorldMatrix.Backward;
+            }
+            horizontalForward = Vector3D.Normalize(horizontalForward);
+            
+            // Rotate forward upward by configured angle
+            double noseUpAngleRad = brain.Config.InterceptNoseUpAngle * Math.PI / 180.0;
+            
+            // Nose-up direction = blend of horizontal forward and world up
+            // At 0° = pure horizontal, at 90° = pure up
+            _initialNoseUpDirection = horizontalForward * Math.Cos(noseUpAngleRad) + _worldUp * Math.Sin(noseUpAngleRad);
+            _initialNoseUpDirection = Vector3D.Normalize(_initialNoseUpDirection);
         }
 
         public IDroneMode Update(DroneBrain brain)
         {
-            // Calculate threat direction from projectile positions
-            Vector3D threatDirection = CalculateThreatDirection(brain);
+            // Update blend factor based on time in mode
+            double elapsedSeconds = (DateTime.UtcNow - _modeEntryTime).TotalSeconds;
+            _blendFactor = Math.Min(1.0, elapsedSeconds / BLEND_RAMP_SECONDS);
             
-            // Orient toward threat (or stay level if no valid direction)
+            // Calculate threat direction with blending
+            Vector3D threatDirection;
+            
+            if (_hasPositionTracking && _projectilePositions.Count > 0)
+            {
+                // Full position tracking - use strategy to calculate aim direction
+                Vector3D droneForward = brain.Context.Reference.WorldMatrix.Forward;
+                Vector3D strategyDirection = _aimStrategy.CalculateAimDirection(
+                    brain.Position, droneForward, _projectilePositions);
+                
+                if (strategyDirection.LengthSquared() > 0.1)
+                {
+                    strategyDirection = Vector3D.Normalize(strategyDirection);
+                    
+                    // Blend from FIXED initial nose-up to LIVE strategy direction
+                    // _initialNoseUpDirection was captured at mode entry and never changes
+                    // strategyDirection updates every tick as missiles move
+                    Vector3D blended = Vector3D.Lerp(_initialNoseUpDirection, strategyDirection, _blendFactor);
+                    threatDirection = Vector3D.Normalize(blended);
+                }
+                else
+                {
+                    // Strategy returned no target - use initial nose-up
+                    threatDirection = _initialNoseUpDirection;
+                }
+            }
+            else
+            {
+                // Count-only mode - use initial nose-up direction only
+                threatDirection = _initialNoseUpDirection;
+            }
+            
+            // Orient toward threat direction
             if (threatDirection.LengthSquared() > 0.1)
             {
                 _lastThreatDirection = threatDirection;
@@ -75,7 +174,7 @@ namespace IngameScript
             }
             else
             {
-                // No valid threat direction - maintain last direction or stay level
+                // Fallback - maintain last direction or stay level
                 if (_lastThreatDirection.LengthSquared() > 0.1)
                 {
                     Vector3D lookTarget = brain.Position + _lastThreatDirection * 1000.0;
@@ -119,97 +218,6 @@ namespace IngameScript
             }
             
             return this;
-        }
-
-        /// <summary>
-        /// Calculates the direction toward the bulk of incoming missiles.
-        /// Uses weighted centroid with two-pass outlier rejection.
-        /// 
-        /// Algorithm:
-        /// 1. First pass: Calculate rough centroid using all missiles (weighted by 1/d²)
-        /// 2. Second pass: Exclude missiles more than 60° from rough centroid
-        /// 3. Recalculate final centroid from remaining missiles
-        /// 
-        /// Weighting:
-        /// - Closer missiles have higher weight (1/distance²)
-        /// - Missiles behind us have reduced weight (×0.1)
-        /// </summary>
-        private Vector3D CalculateThreatDirection(DroneBrain brain)
-        {
-            if (_projectilePositions.Count == 0)
-                return Vector3D.Zero;
-            
-            Vector3D myPos = brain.Position;
-            Vector3D myForward = brain.Context.Reference.WorldMatrix.Forward;
-            
-            // === FIRST PASS: Rough centroid ===
-            Vector3D roughDirection = CalculateWeightedCentroid(myPos, myForward, _projectilePositions, null);
-            
-            if (roughDirection.LengthSquared() < 0.001)
-                return Vector3D.Zero;
-            
-            roughDirection = Vector3D.Normalize(roughDirection);
-            
-            // === SECOND PASS: Filter outliers and recalculate ===
-            Vector3D finalDirection = CalculateWeightedCentroid(myPos, myForward, _projectilePositions, roughDirection);
-            
-            if (finalDirection.LengthSquared() < 0.001)
-                return roughDirection;  // Fall back to rough if filtering removed everything
-            
-            return Vector3D.Normalize(finalDirection);
-        }
-
-        /// <summary>
-        /// Calculates weighted centroid of missile directions.
-        /// </summary>
-        /// <param name="myPos">Drone position</param>
-        /// <param name="myForward">Drone forward vector</param>
-        /// <param name="positions">List of projectile positions</param>
-        /// <param name="filterDirection">If not null, exclude missiles more than OUTLIER_ANGLE_THRESHOLD from this direction</param>
-        private Vector3D CalculateWeightedCentroid(Vector3D myPos, Vector3D myForward, 
-            List<Vector3D> positions, Vector3D? filterDirection)
-        {
-            Vector3D weightedSum = Vector3D.Zero;
-            double totalWeight = 0;
-            double outlierThresholdCos = Math.Cos(OUTLIER_ANGLE_THRESHOLD * Math.PI / 180.0);
-            
-            foreach (var projPos in positions)
-            {
-                Vector3D toProj = projPos - myPos;
-                double distance = toProj.Length();
-                
-                // Distance filtering
-                if (distance < MIN_DISTANCE || distance > MAX_DISTANCE)
-                    continue;
-                
-                Vector3D dirToProj = toProj / distance;  // Normalize
-                
-                // Outlier filtering (second pass only)
-                // if (filterDirection.HasValue)
-                // {
-                //     double dotFilter = Vector3D.Dot(dirToProj, filterDirection.Value);
-                //     if (dotFilter < outlierThresholdCos)
-                //         continue;  // More than threshold degrees from centroid - outlier
-                // }
-                
-                // Weight by inverse distance squared (closer = much more important)
-                double weight = 1.0 / (distance * distance);
-                
-                // Reduce weight for missiles behind us
-                double dotForward = Vector3D.Dot(dirToProj, myForward);
-                if (dotForward < 0)
-                {
-                    weight *= BEHIND_WEIGHT_FACTOR;
-                }
-                
-                weightedSum += dirToProj * weight;
-                totalWeight += weight;
-            }
-            
-            if (totalWeight < 0.0001)
-                return Vector3D.Zero;
-            
-            return weightedSum / totalWeight;
         }
 
         public void Exit(DroneBrain brain)
