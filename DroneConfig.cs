@@ -39,6 +39,9 @@ namespace IngameScript
         public double MaxTiltAngle { get; set; } = 20.0;        // Max pitch from level (degrees)
         public double BrakingSafetyMargin { get; set; } = 0.8;   // Braking distance factor (0.0-1.0)
 
+        // === Intercept Mode ===
+        public double InterceptNoseUpAngle { get; set; } = 45.0;  // Default pitch-up angle when no positions available (degrees)
+
         // === PID Tuning ===
         public PIDGains PositionPID { get; set; } = new PIDGains(2.0, 0.1, 0.8, 50);
         public PIDGains AltitudePID { get; set; } = new PIDGains(3.0, 0.2, 1.0, 30);
@@ -92,6 +95,9 @@ namespace IngameScript
             config.MinTerrainClearance = ini.Get("Flight", "MinTerrainClearance").ToDouble(config.MinTerrainClearance);
             config.MaxTiltAngle = ini.Get("Flight", "MaxTiltAngle").ToDouble(config.MaxTiltAngle);
             config.BrakingSafetyMargin = ini.Get("Flight", "BrakingSafetyMargin").ToDouble(config.BrakingSafetyMargin);
+
+            // === Intercept Section ===
+            config.InterceptNoseUpAngle = ini.Get("Intercept", "NoseUpAngle").ToDouble(config.InterceptNoseUpAngle);
 
             // === PID Sections ===
             config.PositionPID = ParsePIDGains(ini, "PositionPID", config.PositionPID);
