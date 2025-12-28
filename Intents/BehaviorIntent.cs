@@ -33,19 +33,22 @@ namespace IngameScript
     /// A single behavioral step yielded by a directive.
     /// Represents one "tick" of declarative intent: be here, look there, do this.
     /// 
-    /// Position and Orientation should not both be null - use Loiter/StayLevel for idle states.
+    /// If Position implements IOrientationBehavior (coupled maneuver), Orientation is ignored.
     /// </summary>
     public class BehaviorIntent
     {
         /// <summary>
         /// Desired position behavior. Required - use Loiter for idle.
+        /// If this also implements IOrientationBehavior, it's a coupled maneuver
+        /// and the Orientation property is ignored.
         /// </summary>
-        public PositionBehavior Position { get; set; }
+        public IPositionBehavior Position { get; set; }
 
         /// <summary>
-        /// Desired orientation behavior. Required - use StayLevel or MatchLeader for default.
+        /// Desired orientation behavior. Ignored if Position is a coupled maneuver.
+        /// Use StayLevel or MatchLeader for default orientation.
         /// </summary>
-        public OrientationBehavior Orientation { get; set; }
+        public IOrientationBehavior Orientation { get; set; }
 
         /// <summary>
         /// Optional non-locomotion action (docking, antenna, etc.)

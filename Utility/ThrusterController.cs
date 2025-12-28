@@ -420,7 +420,7 @@ namespace IngameScript
             float gravityAssistedYRatio = 0f;
             
             // Debug: Log the force calculations
-            _echo?.Invoke($"[THRUST] net.Y:{localForce.Y:F0}N grav.Y:{gravityForce.Y:F0}N req.Y:{requiredThrust.Y:F0}N");
+            //_echo?.Invoke($"[THRUST] net.Y:{localForce.Y:F0}N grav.Y:{gravityForce.Y:F0}N req.Y:{requiredThrust.Y:F0}N");
             
             // Check if we need to go "down" (negative Y thrust) but only have "up" thrusters
             double upThrust = _thrustMap[1, 0];  // Positive Y thrust

@@ -243,8 +243,13 @@ namespace IngameScript
             // Execute current behaviors
             if (_currentIntent != null)
             {
-                _positionExecutor.Execute(_currentIntent.Position, _droneContext);
-                _orientationExecutor.Execute(_currentIntent.Orientation, _droneContext);
+                // Position executor returns true if it also handled orientation (coupled behaviors)
+                bool orientationHandled = _positionExecutor.Execute(_currentIntent.Position, _droneContext);
+                
+                if (!orientationHandled)
+                {
+                    _orientationExecutor.Execute(_currentIntent.Orientation, _droneContext);
+                }
 
                 // Update cached formation data for status
                 if (HasLeaderContact)

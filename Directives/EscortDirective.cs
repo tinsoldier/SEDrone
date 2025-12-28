@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using VRageMath;
 
@@ -19,6 +20,9 @@ namespace IngameScript
     {
         public string Name => "Escort";
 
+        // Threshold angle (degrees) above which we use LevelFirstApproach
+        private const double LEVEL_FIRST_ANGLE_THRESHOLD = 90.0;
+
         public IEnumerable<BehaviorIntent> Execute(DroneContext ctx)
         {
             while (true)
@@ -39,17 +43,35 @@ namespace IngameScript
                 {
                     // Check if we need to approach or can hold formation
                     bool needsApproach = ctx.HasExitedFormation() || !ctx.IsInFormation();
+                    bool hadThreats = ctx.Tactical.HasThreats;
 
                     if (needsApproach)
                     {
-                        // Approaching formation - yield Approach intent
-                        // The PositionExecutor handles all the phased approach logic
-                        yield return new BehaviorIntent
+                        // Determine if we should use level-first approach
+                        // (when formation is significantly above/below us)
+                        double angleToFormation = GetAngleToFormation(ctx);
+                        bool useLevelFirst = Math.Abs(angleToFormation) > LEVEL_FIRST_ANGLE_THRESHOLD;
+
+                        if (useLevelFirst)
                         {
-                            Position = new Approach(ctx.GetFormationPosition()),
-                            Orientation = GetApproachOrientation(ctx),
-                            ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact
-                        };
+                            // Use coupled behavior - handles both position and orientation
+                            yield return new BehaviorIntent
+                            {
+                                Position = new LevelFirstApproach(() => ctx.GetFormationPosition()),
+                                Orientation = null,  // Coupled behavior handles orientation
+                                ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
+                            };
+                        }
+                        else
+                        {
+                            // Normal approach - dynamic target via Func<>
+                            yield return new BehaviorIntent
+                            {
+                                Position = new Approach(() => ctx.GetFormationPosition()),
+                                Orientation = GetApproachOrientation(ctx),
+                                ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
+                            };
+                        }
                     }
                     else
                     {
@@ -58,7 +80,7 @@ namespace IngameScript
                         {
                             Position = new FormationFollow(ctx.Config.StationOffset),
                             Orientation = GetFormationOrientation(ctx),
-                            ExitWhen = () => ctx.HasExitedFormation() || !ctx.HasLeaderContact
+                            ExitWhen = () => ctx.HasExitedFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
                         };
                     }
                 }
@@ -66,25 +88,45 @@ namespace IngameScript
         }
 
         /// <summary>
+        /// Gets the angle (in degrees) between our forward vector and the direction to formation.
+        /// Positive = above us, Negative = below us (relative to horizon).
+        /// </summary>
+        private double GetAngleToFormation(DroneContext ctx)
+        {
+            Vector3D toFormation = ctx.GetFormationPosition() - ctx.Position;
+            if (toFormation.LengthSquared() < 1.0)
+                return 0;
+
+            toFormation.Normalize();
+            
+            // Get the vertical component (relative to gravity)
+            Vector3D up = -Vector3D.Normalize(ctx.Gravity);
+            double verticalComponent = Vector3D.Dot(toFormation, up);
+            
+            // Convert to angle in degrees
+            return Math.Asin(MathHelper.Clamp(verticalComponent, -1.0, 1.0)) * (180.0 / Math.PI);
+        }
+
+        /// <summary>
         /// Determines orientation behavior while approaching.
         /// If threats exist, face them. Otherwise, look at destination.
         /// </summary>
-        private OrientationBehavior GetApproachOrientation(DroneContext ctx)
+        private IOrientationBehavior GetApproachOrientation(DroneContext ctx)
         {
             if (ctx.Tactical.HasThreats)
             {
                 return new FaceClosestThreat();
             }
 
-            // Look toward formation position during approach
-            return new LookAt(ctx.GetFormationPosition());
+            // Look toward formation position during approach (dynamic)
+            return new LookAt(() => ctx.GetFormationPosition());
         }
 
         /// <summary>
         /// Determines orientation behavior while in formation.
         /// If threats exist, face them. Otherwise, match leader heading.
         /// </summary>
-        private OrientationBehavior GetFormationOrientation(DroneContext ctx)
+        private IOrientationBehavior GetFormationOrientation(DroneContext ctx)
         {
             if (ctx.Tactical.HasThreats)
             {

@@ -37,6 +37,11 @@ namespace IngameScript
         public Vector3D Velocity => Reference.GetShipVelocities().LinearVelocity;
 
         /// <summary>
+        /// Current gravity vector (world space, points down).
+        /// </summary>
+        public Vector3D Gravity => Reference.GetNaturalGravity();
+
+        /// <summary>
         /// Current world matrix.
         /// </summary>
         public MatrixD WorldMatrix => Reference.WorldMatrix;
