@@ -9,14 +9,15 @@ namespace IngameScript
     /// <summary>
     /// Brain for follower drones.
     /// 
-    /// This class acts as a context provider and state machine runner.
-    /// Actual behavioral logic lives in IDroneMode implementations.
+    /// This class acts as a context provider and directive orchestrator.
+    /// Behavioral logic is expressed through IDirective implementations
+    /// which yield BehaviorIntents executed by Executors.
     /// 
     /// Responsibilities:
     /// - Initialize hardware controllers
     /// - Process IGC messages for leader tracking
-    /// - Run the state machine (delegate to current mode)
-    /// - Expose components and state to modes
+    /// - Run the directive iterator and execute behaviors
+    /// - Update tactical context for threat awareness
     /// </summary>
     public class DroneBrain : IBrain
     {
@@ -24,7 +25,7 @@ namespace IngameScript
         public string Name => "Drone";
         public string Status { get; private set; } = "Initializing";
 
-        // === Context exposed to modes ===
+        // === Context exposed to directives and executors ===
         public BrainContext Context { get; private set; }
         public GyroController Gyros { get; private set; }
         public ThrusterController Thrusters { get; private set; }
@@ -32,40 +33,40 @@ namespace IngameScript
         public Action<string> Echo => Context?.Echo;
         public DroneConfig Config => Context.Config;
 
-        // === Leader tracking (updated by brain, read by modes) ===
+        // === Leader tracking ===
         public LeaderStateMessage LastLeaderState { get; private set; }
         public bool HasLeaderContact { get; private set; }
         
         private IMyBroadcastListener _listener;
         private double _lastContactTime;
-        private const double CONTACT_TIMEOUT = 2.0;  // Seconds before leader considered lost
+        private const double CONTACT_TIMEOUT = 2.0;
 
-        // === Convenience accessors for modes ===
+        // === Convenience accessors ===
         public Vector3D Position => Context.Reference.GetPosition();
         public Vector3D Velocity => Context.Reference.GetShipVelocities().LinearVelocity;
 
-        // === State machine ===
-        private IDroneMode _currentMode;
+        // === Directive system ===
+        private IDirective _currentDirective;
+        private IEnumerator<BehaviorIntent> _directiveEnumerator;
+        private BehaviorIntent _currentIntent;
+        private DroneContext _droneContext;
+        private TacticalContext _tacticalContext;
 
-        // === Cached formation data for status display ===
-        private Vector3D _lastFormationPosition;
+        // === Executors ===
+        private PositionExecutor _positionExecutor;
+        private OrientationExecutor _orientationExecutor;
+
+        // === Cached data for status display ===
         private double _lastDistanceToFormation;
 
         // === WcPbApiBridge integration for missile interception ===
         private WcPbApiBridgeClient _wcBridge;
-        private Program.WcPbApi _wcApi;  // Fallback when bridge mod not available
-        private bool _hasPositionTracking;  // True if we can get missile positions
+        private Program.WcPbApi _wcApi;
+        private bool _hasPositionTracking;
         private List<Vector3D> _projectilePositions = new List<Vector3D>();
-        private List<Vector3D> _tempPositions = new List<Vector3D>();  // Temp buffer for API calls
+        private List<Vector3D> _tempPositions = new List<Vector3D>();
         
-        /// <summary>
-        /// Number of smart projectiles currently detected.
-        /// </summary>
         public int ProjectileCount { get; private set; }
-        
-        /// <summary>
-        /// Whether we have position tracking (bridge mod) or just count (standard WcPbApi).
-        /// </summary>
         public bool HasPositionTracking => _hasPositionTracking;
 
         public void Initialize(BrainContext context)
@@ -98,8 +99,27 @@ namespace IngameScript
             // Initialize formation navigator
             Navigator = new FormationNavigator(context.Config);
 
-            // Initialize WeaponCore APIs for missile tracking
-            // Try WcPbApiBridge first (provides positions), fall back to standard WcPbApi (count only)
+            // Initialize tactical context
+            _tacticalContext = new TacticalContext();
+
+            // Initialize drone context (passed to directives)
+            _droneContext = new DroneContext(this, _tacticalContext);
+
+            // Initialize executors
+            _positionExecutor = new PositionExecutor(Navigator, context.Echo);
+            _orientationExecutor = new OrientationExecutor(context.Echo);
+
+            // Initialize WeaponCore APIs
+            InitializeWeaponCore(context);
+
+            // Set initial directive
+            SetDirective(new EscortDirective());
+
+            Status = $"G:{Gyros.GyroCount} T:{Thrusters.ThrusterCount} | {_currentDirective.Name}";
+        }
+
+        private void InitializeWeaponCore(BrainContext context)
+        {
             _hasPositionTracking = false;
             _wcBridge = new WcPbApiBridgeClient();
             
@@ -113,61 +133,62 @@ namespace IngameScript
             }
             catch
             {
-                // Bridge activation failed - continue to fallback
+                // Bridge activation failed
             }
             
             if (!_hasPositionTracking)
             {
-                // Try standard WcPbApi as fallback
                 _wcApi = new Program.WcPbApi();
                 try
                 {
                     if (_wcApi.Activate(context.Me))
                     {
-                        context.Echo?.Invoke("[Drone] WcPbApi connected (count only, will nose-up on threat)");
+                        context.Echo?.Invoke("[Drone] WcPbApi connected (count only)");
                     }
                     else
                     {
                         _wcApi = null;
-                        context.Echo?.Invoke("[Drone] No WeaponCore API available - intercept mode disabled");
+                        context.Echo?.Invoke("[Drone] No WeaponCore API available");
                     }
                 }
                 catch
                 {
                     _wcApi = null;
-                    context.Echo?.Invoke("[Drone] WeaponCore not detected - intercept mode disabled");
+                    context.Echo?.Invoke("[Drone] WeaponCore not detected");
                 }
             }
+        }
 
-            // Set initial mode
-            _currentMode = new SearchingMode();
+        /// <summary>
+        /// Sets a new directive, disposing the old enumerator.
+        /// </summary>
+        public void SetDirective(IDirective directive)
+        {
+            // Dispose old enumerator for cleanup
+            if (_directiveEnumerator != null)
+            {
+                _directiveEnumerator.Dispose();
+            }
 
-            Status = $"G:{Gyros.GyroCount} T:{Thrusters.ThrusterCount} | {_currentMode.Name}";
+            _currentDirective = directive;
+            _directiveEnumerator = directive.Execute(_droneContext).GetEnumerator();
+            _currentIntent = null;  // Force advancement on next update
+            
+            Echo?.Invoke($"[Drone] Directive: {directive.Name}");
         }
 
         public IEnumerator<bool> Run()
         {
-            // Enter initial mode
-            _currentMode.Enter(this);
-            UpdateStatus();
-
             while (true)
             {
                 // === Brain responsibilities (every tick) ===
                 ProcessMessages();
                 CheckLeaderTimeout();
                 UpdateControllers();
-                
-                // === Threat detection (interrupt pattern) ===
-                CheckForThreats();
+                UpdateTacticalContext();
 
-                // === Run state machine ===
-                IDroneMode nextMode = _currentMode.Update(this);
-
-                if (nextMode != _currentMode)
-                {
-                    TransitionTo(nextMode);
-                }
+                // === Run directive ===
+                RunDirective();
 
                 UpdateStatus();
                 yield return true;
@@ -175,77 +196,68 @@ namespace IngameScript
         }
 
         /// <summary>
-        /// Transitions to a new mode, calling Exit on current and Enter on new.
+        /// Runs one tick of the directive system.
         /// </summary>
-        private void TransitionTo(IDroneMode newMode)
+        private void RunDirective()
         {
-            Echo?.Invoke($"[Drone] {_currentMode.Name} → {newMode.Name}");
-            _currentMode.Exit(this);
-            _currentMode = newMode;
-            _currentMode.Enter(this);
-        }
+            // Check if we need to advance to next intent
+            bool shouldAdvance = _currentIntent == null
+                || _currentIntent.IsComplete
+                || _currentIntent.IsAborted
+                || (_currentIntent.ExitWhen != null && _currentIntent.ExitWhen());
 
-        /// <summary>
-        /// Updates controller references and timing.
-        /// Called every tick before mode update.
-        /// </summary>
-        private void UpdateControllers()
-        {
-            // Update timing
-            Gyros.SetDeltaTime(Context.DeltaTime);
-            Thrusters.SetDeltaTime(Context.DeltaTime);
-
-            // Update references
-            Gyros.SetReference(Context.Reference);
-            Thrusters.SetReference(Context.Reference);
-
-            // Update tilt limit from config
-            Gyros.SetMaxTilt(Config.MaxTiltAngle);
-
-            // Update ship mass
-            var massData = Context.Reference.CalculateShipMass();
-            Thrusters.SetShipMass(massData.PhysicalMass);
-        }
-
-        /// <summary>
-        /// Processes pending IGC messages and updates leader state.
-        /// </summary>
-        private void ProcessMessages()
-        {
-            while (_listener.HasPendingMessage)
+            if (shouldAdvance)
             {
-                var msg = _listener.AcceptMessage();
-                var data = msg.Data as string;
-                if (data != null)
+                if (!_directiveEnumerator.MoveNext())
                 {
-                    LeaderStateMessage leaderState;
-                    if (LeaderStateMessage.TryParse(data, out leaderState))
-                    {
-                        LastLeaderState = leaderState;
-                        HasLeaderContact = true;
-                        _lastContactTime = Context.GameTime;
-                    }
+                    // Directive exhausted - restart with escort
+                    Echo?.Invoke("[Drone] Directive exhausted, restarting escort");
+                    SetDirective(new EscortDirective());
+                    _directiveEnumerator.MoveNext();
+                }
+
+                var newIntent = _directiveEnumerator.Current;
+
+                // Handle terminal states
+                if (newIntent != null && (newIntent.IsComplete || newIntent.IsAborted))
+                {
+                    string reason = newIntent.IsAborted && newIntent.Abort != null 
+                        ? newIntent.Abort.Reason.ToString() 
+                        : "Complete";
+                    Echo?.Invoke($"[Drone] Directive ended: {reason}");
+                    SetDirective(new EscortDirective());
+                    _directiveEnumerator.MoveNext();
+                    newIntent = _directiveEnumerator.Current;
+                }
+
+                // Notify executors of behavior changes
+                if (newIntent != null)
+                {
+                    _positionExecutor.OnBehaviorChanged(newIntent.Position);
+                    _orientationExecutor.OnBehaviorChanged(newIntent.Orientation);
+                }
+
+                _currentIntent = newIntent;
+            }
+
+            // Execute current behaviors
+            if (_currentIntent != null)
+            {
+                _positionExecutor.Execute(_currentIntent.Position, _droneContext);
+                _orientationExecutor.Execute(_currentIntent.Orientation, _droneContext);
+
+                // Update cached formation data for status
+                if (HasLeaderContact)
+                {
+                    _lastDistanceToFormation = _droneContext.DistanceToFormation();
                 }
             }
         }
 
         /// <summary>
-        /// Checks if leader contact has timed out.
+        /// Updates tactical context with current threat data.
         /// </summary>
-        private void CheckLeaderTimeout()
-        {
-            if (HasLeaderContact && Context.GameTime - _lastContactTime > CONTACT_TIMEOUT)
-            {
-                HasLeaderContact = false;
-                Echo?.Invoke("[Drone] Leader contact lost!");
-            }
-        }
-
-        /// <summary>
-        /// Checks for incoming missile threats and handles mode interruption.
-        /// Uses WcPbApiBridge (with positions) or falls back to WcPbApi (count only).
-        /// </summary>
-        private void CheckForThreats()
+        private void UpdateTacticalContext()
         {
             ProjectileCount = 0;
             _projectilePositions.Clear();
@@ -255,66 +267,22 @@ namespace IngameScript
             
             if (_hasPositionTracking && _wcBridge != null && _wcBridge.IsReady && _wcBridge.IsWcApiReady)
             {
-                // === Full position tracking via WcPbApiBridge ===
                 CheckThreatsWithPositions(droneEntityId, leaderEntityId);
+                _tacticalContext.UpdateThreats(_projectilePositions);
             }
             else if (_wcApi != null)
             {
-                // === Fallback: count-only via standard WcPbApi ===
                 CheckThreatsCountOnly(droneEntityId, leaderEntityId);
+                _tacticalContext.UpdateThreatCount(ProjectileCount);
             }
             else
             {
-                // No WC API available - can't detect missiles
-                return;
-            }
-            
-            // Handle mode transitions based on threat state
-            if (ProjectileCount > 0)
-            {
-                var interceptMode = _currentMode as InterceptMode;
-                if (interceptMode != null)
-                {
-                    // Already in intercept mode - update
-                    if (_hasPositionTracking && _projectilePositions.Count > 0)
-                    {
-                        interceptMode.UpdateProjectilePositions(_projectilePositions);
-                    }
-                    else
-                    {
-                        interceptMode.UpdateProjectileCount(ProjectileCount);
-                    }
-                }
-                else
-                {
-                    // Not in intercept mode - transition immediately
-                    // Default to ClosestMissileAimStrategy for aggressive point defense
-                    var newMode = new InterceptMode(new ClosestMissileAimStrategy(), ProjectileCount);
-                    newMode.SetHasPositionTracking(_hasPositionTracking);
-                    TransitionTo(newMode);
-                    
-                    if (_hasPositionTracking && _projectilePositions.Count > 0)
-                    {
-                        newMode.UpdateProjectilePositions(_projectilePositions);
-                    }
-                }
-            }
-            else
-            {
-                // No threats
-                if (_currentMode is InterceptMode)
-                {
-                    TransitionTo(new SearchingMode());
-                }
+                _tacticalContext.ClearThreats();
             }
         }
 
-        /// <summary>
-        /// Checks for threats using WcPbApiBridge (provides missile positions).
-        /// </summary>
         private void CheckThreatsWithPositions(long droneEntityId, long leaderEntityId)
         {
-            // Get projectiles targeting drone
             _tempPositions.Clear();
             int droneCount = _wcBridge.GetProjectilesLockedOnPos(droneEntityId, _tempPositions);
             if (droneCount > 0)
@@ -322,14 +290,12 @@ namespace IngameScript
                 _projectilePositions.AddRange(_tempPositions);
             }
             
-            // Get projectiles targeting leader (if we have contact)
             if (leaderEntityId != 0)
             {
                 _tempPositions.Clear();
                 int leaderCount = _wcBridge.GetProjectilesLockedOnPos(leaderEntityId, _tempPositions);
                 if (leaderCount > 0)
                 {
-                    // Add leader-targeted missiles, avoiding duplicates
                     foreach (var pos in _tempPositions)
                     {
                         bool isDuplicate = false;
@@ -352,21 +318,16 @@ namespace IngameScript
             ProjectileCount = _projectilePositions.Count;
         }
 
-        /// <summary>
-        /// Checks for threats using standard WcPbApi (count only, no positions).
-        /// </summary>
         private void CheckThreatsCountOnly(long droneEntityId, long leaderEntityId)
         {
             int totalCount = 0;
             
-            // Check drone
             var droneResult = _wcApi.GetProjectilesLockedOn(droneEntityId);
-            if (droneResult.Item1)  // Item1 = isLockedOn
+            if (droneResult.Item1)
             {
-                totalCount += droneResult.Item2;  // Item2 = count
+                totalCount += droneResult.Item2;
             }
             
-            // Check leader
             if (leaderEntityId != 0)
             {
                 var leaderResult = _wcApi.GetProjectilesLockedOn(leaderEntityId);
@@ -379,25 +340,66 @@ namespace IngameScript
             ProjectileCount = totalCount;
         }
 
-        /// <summary>
-        /// Called by modes to update cached formation data for status display.
-        /// </summary>
-        public void UpdateFormationData(Vector3D formationPosition, double distanceToFormation)
+        private void UpdateControllers()
         {
-            _lastFormationPosition = formationPosition;
-            _lastDistanceToFormation = distanceToFormation;
+            Gyros.SetDeltaTime(Context.DeltaTime);
+            Thrusters.SetDeltaTime(Context.DeltaTime);
+
+            Gyros.SetReference(Context.Reference);
+            Thrusters.SetReference(Context.Reference);
+
+            Gyros.SetMaxTilt(Config.MaxTiltAngle);
+
+            var massData = Context.Reference.CalculateShipMass();
+            Thrusters.SetShipMass(massData.PhysicalMass);
         }
 
-        /// <summary>
-        /// Updates the status string.
-        /// </summary>
+        private void ProcessMessages()
+        {
+            while (_listener.HasPendingMessage)
+            {
+                var msg = _listener.AcceptMessage();
+                var data = msg.Data as string;
+                if (data != null)
+                {
+                    LeaderStateMessage leaderState;
+                    if (LeaderStateMessage.TryParse(data, out leaderState))
+                    {
+                        LastLeaderState = leaderState;
+                        HasLeaderContact = true;
+                        _lastContactTime = Context.GameTime;
+                    }
+                }
+            }
+        }
+
+        private void CheckLeaderTimeout()
+        {
+            if (HasLeaderContact && Context.GameTime - _lastContactTime > CONTACT_TIMEOUT)
+            {
+                HasLeaderContact = false;
+                Echo?.Invoke("[Drone] Leader contact lost!");
+            }
+        }
+
         private void UpdateStatus()
         {
-            string modeName = _currentMode?.Name ?? "None";
+            string directiveName = _currentDirective?.Name ?? "None";
+            string phase = "";
+            
+            // Add approach phase info if relevant
+            if (_currentIntent?.Position is Approach)
+            {
+                phase = $" ({_positionExecutor.CurrentPhase})";
+            }
+            else if (_currentIntent?.Position is FormationFollow)
+            {
+                phase = " (Formation)";
+            }
             
             if (!HasLeaderContact)
             {
-                Status = $"{modeName} | No leader";
+                Status = $"{directiveName}{phase} | No leader";
                 return;
             }
 
@@ -405,12 +407,14 @@ namespace IngameScript
             double speed = Context.Reference.GetShipSpeed();
             double angleOff = Gyros.TotalError * 180.0 / Math.PI;
 
-            Status = $"{modeName} | F:{_lastDistanceToFormation:F0}m L:{distToLeader:F0}m | {speed:F0}m/s {angleOff:F1}°";
+            string threatInfo = ProjectileCount > 0 ? $" T:{ProjectileCount}" : "";
+
+            Status = $"{directiveName}{phase} | F:{_lastDistanceToFormation:F0}m L:{distToLeader:F0}m | {speed:F0}m/s {angleOff:F1}°{threatInfo}";
         }
 
         public void Shutdown()
         {
-            _currentMode?.Exit(this);
+            _directiveEnumerator?.Dispose();
             Gyros?.Release();
             Thrusters?.Release();
             Status = "Shutdown";
