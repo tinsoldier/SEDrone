@@ -55,7 +55,6 @@ namespace IngameScript
 
         // === Shared Components ===
         public IMyShipController Reference { get; set; }
-        public TargetTracker TargetTracker { get; set; }
 
         // === Runtime ===
         public double DeltaTime { get; set; }   // Seconds since last update

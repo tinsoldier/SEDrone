@@ -58,12 +58,15 @@ namespace IngameScript
 
             var lookAt = behavior as LookAt;
             var lookDir = behavior as LookDirection;
+            var levelTurn = behavior as LevelTurnToward;
             var alignConnector = behavior as AlignConnector;
 
             if (lookAt != null)
                 ExecuteLookAt(lookAt, ctx);
             else if (lookDir != null)
                 ExecuteLookDirection(lookDir, ctx);
+            else if (levelTurn != null)
+                ExecuteLevelTurnToward(levelTurn, ctx);
             else if (alignConnector != null)
                 ExecuteAlignConnector(alignConnector, ctx);
             else if (behavior is MatchLeader)
@@ -89,6 +92,11 @@ namespace IngameScript
 
             Vector3D target = ctx.Position + Vector3D.Normalize(behavior.Direction) * 1000.0;
             ctx.Gyros.LookAt(target);
+        }
+
+        private void ExecuteLevelTurnToward(LevelTurnToward behavior, DroneContext ctx)
+        {
+            ctx.Gyros.LevelTurnToward(behavior.Target);
         }
 
         private void ExecuteMatchLeader(DroneContext ctx)

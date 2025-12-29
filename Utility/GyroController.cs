@@ -8,7 +8,7 @@ namespace IngameScript
     /// <summary>
     /// Manages orientation control via gyroscopes.
     /// Provides a simple LookAt interface for callers - they specify what to look at,
-    /// this class handles all the gyro math, PID control, and predictive braking.
+    /// this class handles all the gyro math, PID control, and intelligent turn modes.
     /// </summary>
     public class GyroController
     {
@@ -16,10 +16,10 @@ namespace IngameScript
         private IMyShipController _reference;
         private PIDController3D _orientationPID;
         private Action<string> _echo;
-        
+
         // === Gyro hardware ===
         private List<IMyGyro> _gyros = new List<IMyGyro>();
-        
+
         // === Predictive braking state (per-axis tracking) ===
         private double _lastPitchError;
         private double _lastYawError;
@@ -27,34 +27,30 @@ namespace IngameScript
         private double _lastPitchVelocity;
         private double _lastYawVelocity;
         private double _lastRollVelocity;
-        
-        // === 180° turn hysteresis ===
-        private bool _inBackwardsTurn = false;  // Are we in the middle of a 180° turn?
-        private double _lockedTurnSign = 1.0;   // Which direction we committed to (+1 = right, -1 = left)
-        
+
         // === Control tuning ===
-        private const double MAX_ANGULAR_VELOCITY = 2.0;  // rad/s - max rotation speed for dampened control
+        private const double MAX_ANGULAR_VELOCITY = 4.0;  // rad/s - max rotation speed for dampened control
         private const double ALIGNMENT_DEADBAND = 0.005;  // ~0.3 degrees - very tight deadband
         private const double DAMPEN_THRESHOLD = 0.1;      // ~6 degrees - switch to fine control below this
         private const double PID_ANGLE_THRESHOLD = 0.05;  // ~3 degrees - angle threshold for PID
         private const double PID_VELOCITY_THRESHOLD = 0.25; // rad/s - velocity threshold for PID
         private const double PID_MAX_OUTPUT = 2.0;        // rad/s - cap PID output
         private const double DEFAULT_MAX_TILT = 0.35;     // ~20 degrees default max tilt
-        
+
         // === Tilt limiting ===
         private double _maxTiltAngle = DEFAULT_MAX_TILT;  // radians
-        
+
         // === PID state tracking ===
         private bool _pidActive = false;
-        
+
         // === Current state ===
         private double _deltaTime = 0.016;  // Default to ~60fps
-        
+
         /// <summary>
         /// The current total angular error in radians.
         /// </summary>
         public double TotalError { get; private set; }
-        
+
         /// <summary>
         /// Whether the controller is currently aligned (within deadband).
         /// </summary>
@@ -74,23 +70,13 @@ namespace IngameScript
             _echo = echo;
             _orientationPID = new PIDController3D(pidGains);
         }
-        
+
         /// <summary>
         /// Updates the reference controller (e.g., if player switches cockpits).
         /// </summary>
         public void SetReference(IMyShipController reference)
         {
             _reference = reference;
-        }
-
-        /// <summary>
-        /// Resets the backwards turn lock state.
-        /// Call this when switching orientation modes to prevent stale lock state.
-        /// </summary>
-        public void ResetTurnLock()
-        {
-            _inBackwardsTurn = false;
-            _lockedTurnSign = 1.0;
         }
 
         /// <summary>
@@ -126,190 +112,19 @@ namespace IngameScript
                 return false;
 
             Vector3D gravity = _reference.GetNaturalGravity();
-            
+
             // Fallback right vector in case leader is pointing straight up/down
             Vector3D leaderRight = Vector3D.Cross(leaderUp, leaderForward);
-            
+
             Vector3D horizontalForward = VectorMath.ProjectOntoHorizontalPlane(leaderForward, gravity, leaderRight);
-            
+
             if (horizontalForward.LengthSquared() > 0.001)
             {
-                return OrientToward(horizontalForward);
+                return OrientToward(horizontalForward, null, true);
             }
-            
+
             // Degenerate case - maintain current orientation
             return false;
-        }
-
-        /// <summary>
-        /// Orients the grid to face a target position using yaw only (rotation around gravity axis).
-        /// Keeps the grid level by not applying pitch, only yaw and roll correction.
-        /// Use this for conservative turns where you want to stay level while changing heading.
-        /// </summary>
-        /// <param name="worldTarget">The world position to turn toward</param>
-        /// <returns>True if orientation was applied</returns>
-        public bool LevelTurnToward(Vector3D worldTarget)
-        {
-            if (_reference == null || _gyros.Count == 0)
-                return false;
-
-            Vector3D gravity = _reference.GetNaturalGravity();
-            if (gravity.LengthSquared() < 0.1)
-            {
-                // No gravity - fall back to regular LookAt
-                return LookAt(worldTarget);
-            }
-
-            Vector3D myPosition = _reference.GetPosition();
-            Vector3D toTarget = worldTarget - myPosition;
-            
-            if (toTarget.LengthSquared() < 1)
-                return false;
-
-            // Project target direction onto horizontal plane
-            Vector3D worldUp = -Vector3D.Normalize(gravity);
-            Vector3D horizontalToTarget = toTarget - worldUp * Vector3D.Dot(toTarget, worldUp);
-            
-            if (horizontalToTarget.LengthSquared() < 0.001)
-            {
-                // Target is directly above/below - just maintain level, no yaw needed
-                return OrientLevel();
-            }
-
-            Vector3D desiredForward = Vector3D.Normalize(horizontalToTarget);
-            return OrientTowardLevel(desiredForward, worldUp);
-        }
-
-        /// <summary>
-        /// Orients the grid to face a horizontal direction while staying level.
-        /// Only applies yaw (rotation around gravity axis) and roll correction.
-        /// Pitch is actively driven to zero (level flight).
-        /// Uses gentler control than ApplyOrientationControl to avoid oscillation.
-        /// </summary>
-        /// <param name="horizontalDirection">The horizontal direction to face (should already be in horizontal plane)</param>
-        /// <param name="worldUp">The "up" direction (opposite of gravity)</param>
-        /// <returns>True if orientation was applied</returns>
-        private bool OrientTowardLevel(Vector3D horizontalDirection, Vector3D worldUp)
-        {
-            if (_reference == null || _gyros.Count == 0)
-                return false;
-
-            MatrixD refMatrix = _reference.WorldMatrix;
-            Vector3D currentForward = refMatrix.Forward;
-            Vector3D currentUp = refMatrix.Up;
-
-            // Project current forward onto horizontal plane for yaw calculation
-            Vector3D currentHorizontalForward = currentForward - worldUp * Vector3D.Dot(currentForward, worldUp);
-            if (currentHorizontalForward.LengthSquared() < 0.001)
-            {
-                currentHorizontalForward = refMatrix.Backward; // Pointing straight up/down, use any horizontal reference
-            }
-            currentHorizontalForward = Vector3D.Normalize(currentHorizontalForward);
-
-            // === YAW: Use atan2 for proper signed angle, with hysteresis for large turns ===
-            double yawCos = Vector3D.Dot(currentHorizontalForward, horizontalDirection);
-            Vector3D yawCross = Vector3D.Cross(currentHorizontalForward, horizontalDirection);
-            double yawSin = Vector3D.Dot(yawCross, worldUp);
-            
-            // Calculate facing angle for threshold checks
-            double facingAngleRad = Math.Acos(MathHelper.Clamp(yawCos, -1, 1));
-            double facingAngleDeg = facingAngleRad * 180.0 / Math.PI;
-            
-            // Handle the 180° instability with hysteresis
-            // Enter backwards mode when more than ~120° off (cos < -0.5)
-            // Stay locked until actually facing target within 30° (same as LEVEL_TURN_COMPLETE_THRESHOLD)
-            double yawError;
-            
-            if (_inBackwardsTurn)
-            {
-                // We're in the middle of a large turn - keep turning the locked direction
-                // Only exit when we're actually facing the target (within 30°)
-                if (facingAngleDeg < 30.0)
-                {
-                    // We're now facing the target - exit backwards turn mode
-                    _inBackwardsTurn = false;
-                    yawError = Math.Atan2(yawSin, yawCos);  // Fine control for final alignment
-                }
-                else
-                {
-                    // Still turning - keep the locked direction
-                    yawError = _lockedTurnSign * facingAngleRad;
-                }
-            }
-            else
-            {
-                // Normal mode - check if we should enter backwards turn mode
-                if (yawCos < -0.5)  // More than ~120° off
-                {
-                    // Enter backwards turn mode
-                    _inBackwardsTurn = true;
-                    // Lock to whichever direction has less turn, but if ambiguous (sin near 0), pick positive
-                    _lockedTurnSign = (yawSin >= 0) ? 1.0 : -1.0;
-                    yawError = _lockedTurnSign * facingAngleRad;
-                }
-                else
-                {
-                    // Normal case - use atan2
-                    yawError = Math.Atan2(yawSin, yawCos);
-                }
-            }
-
-            // === DEBUG OUTPUT ===
-            double yawErrorDeg = yawError * 180.0 / Math.PI;
-            _echo?.Invoke($"[GYRO] Angle:{facingAngleDeg:F0}° Cmd:{yawErrorDeg:F0}° Lock:{(_inBackwardsTurn ? "Y" : "N")}");
-
-            // === PITCH: Drive to zero (level flight) ===
-            // Current pitch is the angle of our forward from horizontal
-            double currentPitch = Math.Asin(MathHelper.Clamp(Vector3D.Dot(currentForward, worldUp), -1, 1));
-            double pitchError = -currentPitch;  // We want zero pitch, so error is negative of current
-
-            // === ROLL: Align up with gravity ===
-            double rollError = 0;
-            Vector3D worldUpProjected = worldUp - currentForward * Vector3D.Dot(worldUp, currentForward);
-            if (worldUpProjected.LengthSquared() > 0.001)
-            {
-                worldUpProjected = Vector3D.Normalize(worldUpProjected);
-                double rollDot = Vector3D.Dot(currentUp, worldUpProjected);
-                double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, worldUpProjected));
-                rollError = Math.Atan2(rollCross, rollDot);
-            }
-
-            // Use gentler proportional control for level turns to avoid oscillation
-            // Cap yaw rate to prevent overshoot
-            ApplyLevelTurnControl(pitchError, yawError, rollError);
-            return true;
-        }
-
-        /// <summary>
-        /// Simpler control specifically for level turns.
-        /// Uses proportional control only, no predictive braking, to avoid oscillation.
-        /// </summary>
-        private void ApplyLevelTurnControl(double pitchError, double yawError, double rollError)
-        {
-            // Simple proportional gains - gentle to avoid oscillation
-            const double PITCH_GAIN = 1.5;  // Level quickly but not aggressively
-            const double YAW_GAIN = 0.8;    // Gentle yaw to prevent overshoot
-            const double ROLL_GAIN = 1.0;   // Moderate roll correction
-            const double MAX_YAW_RATE = 0.5;  // rad/s - cap yaw to prevent overshoot
-            const double MAX_PITCH_RATE = 1.0;
-            const double MAX_ROLL_RATE = 0.5;
-
-            // Simple proportional control with rate limiting
-            double pitchCommand = MathHelper.Clamp(pitchError * PITCH_GAIN, -MAX_PITCH_RATE, MAX_PITCH_RATE);
-            double yawCommand = MathHelper.Clamp(yawError * YAW_GAIN, -MAX_YAW_RATE, MAX_YAW_RATE);
-            double rollCommand = MathHelper.Clamp(rollError * ROLL_GAIN, -MAX_ROLL_RATE, MAX_ROLL_RATE);
-
-            // Deadband
-            const double DEADBAND = 0.02;  // ~1 degree
-            if (Math.Abs(pitchError) < DEADBAND) pitchCommand = 0;
-            if (Math.Abs(yawError) < DEADBAND) yawCommand = 0;
-            if (Math.Abs(rollError) < DEADBAND) rollCommand = 0;
-
-            // DEBUG: Show what we're commanding
-            _echo?.Invoke($"[GYRO CMD] Yaw:{yawCommand:F2} Pitch:{pitchCommand:F2} Roll:{rollCommand:F2}");
-
-            Vector3D correction = new Vector3D(pitchCommand, yawCommand, rollCommand);
-            SetGyroOverride(correction);
         }
 
         /// <summary>
@@ -329,7 +144,6 @@ namespace IngameScript
             Vector3D worldUp = -Vector3D.Normalize(gravity);
             MatrixD refMatrix = _reference.WorldMatrix;
             Vector3D currentForward = refMatrix.Forward;
-            Vector3D currentUp = refMatrix.Up;
 
             // Project current forward onto horizontal plane to maintain heading
             Vector3D horizontalForward = currentForward - worldUp * Vector3D.Dot(currentForward, worldUp);
@@ -339,7 +153,29 @@ namespace IngameScript
             }
             horizontalForward = Vector3D.Normalize(horizontalForward);
 
-            return OrientTowardLevel(horizontalForward, worldUp);
+            return OrientToward(horizontalForward, null, true);
+        }
+
+        /// <summary>
+        /// Orients the grid to face a target position using level turning (yaw only).
+        /// Locks pitch and roll to horizon during the turn to prevent rolling.
+        /// This is now a wrapper around OrientToward with forceLevelTurn = true.
+        /// </summary>
+        /// <param name="worldTarget">The world position to turn toward</param>
+        /// <returns>True if orientation was applied</returns>
+        public bool LevelTurnToward(Vector3D worldTarget)
+        {
+            if (_reference == null || _gyros.Count == 0)
+                return false;
+
+            Vector3D myPosition = _reference.GetPosition();
+            Vector3D toTarget = worldTarget - myPosition;
+
+            if (toTarget.LengthSquared() < 1)
+                return false;
+
+            Vector3D desiredForward = Vector3D.Normalize(toTarget);
+            return OrientToward(desiredForward, null, true);
         }
 
         /// <summary>
@@ -361,7 +197,7 @@ namespace IngameScript
 
             // Check pitch: angle of forward from horizontal
             double pitch = Math.Abs(Math.Asin(MathHelper.Clamp(Vector3D.Dot(refMatrix.Forward, worldUp), -1, 1)));
-            
+
             // Check roll: angle of up from worldUp (projected onto plane perpendicular to forward)
             Vector3D worldUpProjected = worldUp - refMatrix.Forward * Vector3D.Dot(worldUp, refMatrix.Forward);
             double roll = 0;
@@ -387,13 +223,13 @@ namespace IngameScript
                 return false;
 
             Vector3D gravity = _reference.GetNaturalGravity();
-            Vector3D worldUp = gravity.LengthSquared() > 0.1 
-                ? -Vector3D.Normalize(gravity) 
+            Vector3D worldUp = gravity.LengthSquared() > 0.1
+                ? -Vector3D.Normalize(gravity)
                 : _reference.WorldMatrix.Up;
 
             Vector3D myPosition = _reference.GetPosition();
             Vector3D toTarget = worldTarget - myPosition;
-            
+
             // Project both onto horizontal plane
             Vector3D horizontalToTarget = toTarget - worldUp * Vector3D.Dot(toTarget, worldUp);
             Vector3D horizontalForward = _reference.WorldMatrix.Forward - worldUp * Vector3D.Dot(_reference.WorldMatrix.Forward, worldUp);
@@ -405,17 +241,14 @@ namespace IngameScript
             horizontalForward = Vector3D.Normalize(horizontalForward);
 
             double angle = Math.Acos(MathHelper.Clamp(Vector3D.Dot(horizontalForward, horizontalToTarget), -1, 1));
-            double angleDeg = angle * 180.0 / Math.PI;
             double toleranceRad = toleranceDegrees * Math.PI / 180.0;
-            
-            bool facing = angle < toleranceRad;
-            _echo?.Invoke($"[FACING] Angle:{angleDeg:F1}° Tol:{toleranceDegrees}° => {(facing ? "YES" : "NO")}");
-            
-            return facing;
+
+            return angle < toleranceRad;
         }
 
         /// <summary>
         /// Orients the grid to face a world-space target position.
+        /// Automatically uses level turning for large yaw errors to prevent rolling.
         /// Call this every tick to maintain orientation.
         /// </summary>
         /// <param name="worldTarget">The world position to look at</param>
@@ -427,7 +260,7 @@ namespace IngameScript
 
             Vector3D myPosition = _reference.GetPosition();
             Vector3D toTarget = worldTarget - myPosition;
-            
+
             if (toTarget.LengthSquared() < 1)  // Too close, avoid division by zero
                 return false;
 
@@ -437,14 +270,17 @@ namespace IngameScript
 
         /// <summary>
         /// Orients the grid so its forward vector aligns with the specified world direction.
+        /// Automatically detects large yaw errors and uses level turning to prevent rolling.
         /// </summary>
         /// <param name="worldDirection">The world-space direction to face (will be normalized)</param>
+        /// <param name="customUp">Optional custom up direction (for docking). If null, uses gravity.</param>
+        /// <param name="forceLevelTurn">Force level turn mode regardless of yaw error</param>
         /// <returns>True if orientation was applied</returns>
-        public bool OrientToward(Vector3D worldDirection)
+        public bool OrientToward(Vector3D worldDirection, Vector3D? customUp = null, bool forceLevelTurn = false)
         {
             if (_reference == null || _gyros.Count == 0)
                 return false;
-                
+
             if (worldDirection.LengthSquared() < 0.001)
                 return false;
 
@@ -453,20 +289,95 @@ namespace IngameScript
             Vector3D currentForward = refMatrix.Forward;
             Vector3D currentUp = refMatrix.Up;
 
+            // Get gravity/up reference
+            Vector3D gravity = _reference.GetNaturalGravity();
+            bool hasGravity = gravity.LengthSquared() > 0.1;
+            Vector3D worldUp = hasGravity ? -Vector3D.Normalize(gravity) : refMatrix.Up;
+
+            // If custom up is provided (docking), use it instead
+            if (customUp.HasValue)
+            {
+                worldUp = Vector3D.Normalize(customUp.Value);
+            }
+
+            // === Execute appropriate control mode ===
+            // Only use level turn if explicitly forced (via LevelTurnToward or OrientLevel)
+            // Normal orientation should handle roll correctly now with fixed gravity reference
+            if (forceLevelTurn)
+            {
+                return ExecuteLevelTurn(desiredForward, worldUp, currentForward, currentUp);
+            }
+            else
+            {
+                return ExecuteFullOrientation(desiredForward, worldUp, customUp.HasValue, currentForward, currentUp, refMatrix);
+            }
+        }
+
+        /// <summary>
+        /// Level turn: Only yaw around gravity axis, keep pitch and roll locked to horizon.
+        /// This prevents rolling during large turns.
+        /// </summary>
+        private bool ExecuteLevelTurn(Vector3D desiredForward, Vector3D worldUp, Vector3D currentForward, Vector3D currentUp)
+        {
+            // === SkunkBot's Simple Approach ===
+            // Transform desired direction into local space, then use simple trig
+            MatrixD refMatrix = _reference.WorldMatrix;
+            MatrixD lookAtMatrix = MatrixD.CreateLookAt(Vector3D.Zero, refMatrix.Forward, refMatrix.Up);
+            Vector3D localTarget = Vector3D.TransformNormal(desiredForward, lookAtMatrix);
+            // In local space: +Z is forward, +Y is up, +X is right
+
+            // === YAW: Only consider horizontal plane (X-Z) ===
+            Vector3D yawPlane = new Vector3D(localTarget.X, 0, localTarget.Z);
+            double yawError = 0;
+            if (yawPlane.LengthSquared() > 0.0001)
+            {
+                yawPlane = Vector3D.Normalize(yawPlane);
+                // Angle from forward in horizontal plane
+                double yawAngle = Math.Acos(MathHelper.Clamp(Vector3D.Dot(yawPlane, Vector3D.Forward), -1, 1));
+                // Sign based on which side (left is negative X, so flip sign)
+                yawError = yawAngle * (localTarget.X < 0 ? -1 : 1);
+            }
+
+            // === PITCH: Drive to zero (lock nose to horizon) ===
+            double currentPitch = Math.Asin(MathHelper.Clamp(Vector3D.Dot(currentForward, worldUp), -1, 1));
+            double pitchError = -currentPitch;
+
+            // === ROLL: Lock to gravity (lock wings to horizon) ===
+            Vector3D worldUpProjected = worldUp - currentForward * Vector3D.Dot(worldUp, currentForward);
+            double rollError = 0;
+            if (worldUpProjected.LengthSquared() > 0.001)
+            {
+                worldUpProjected = Vector3D.Normalize(worldUpProjected);
+                double rollDot = Vector3D.Dot(currentUp, worldUpProjected);
+                double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, worldUpProjected));
+                rollError = Math.Atan2(rollCross, rollDot);
+            }
+
+            ApplyOrientationControl(pitchError, yawError, rollError);
+            return true;
+        }
+
+        /// <summary>
+        /// Full 3-axis orientation: Allows pitch, yaw, and roll to reach target orientation.
+        /// Used for smaller corrections or when custom up vector is specified (docking).
+        /// </summary>
+        private bool ExecuteFullOrientation(Vector3D desiredForward, Vector3D worldUp, bool hasCustomUp,
+            Vector3D currentForward, Vector3D currentUp, MatrixD refMatrix)
+        {
             // === Transform to local space using LookAt matrix ===
             // This creates a stable local reference frame that doesn't couple axes
             MatrixD lookAtMatrix = MatrixD.CreateLookAt(Vector3D.Zero, refMatrix.Forward, refMatrix.Up);
             Vector3D localTarget = Vector3D.TransformNormal(desiredForward, lookAtMatrix);
-            
+
             // In this local space: +Z is forward, +Y is up, +X is right
             // Decompose into yaw plane (X-Z) and pitch plane (Y-Z)
             Vector3D yawVector = new Vector3D(localTarget.X, 0, localTarget.Z);
             Vector3D pitchVector = new Vector3D(0, localTarget.Y, localTarget.Z);
-            
+
             double yawError = 0;
             double pitchError = 0;
             double rollError = 0;
-            
+
             // Yaw: angle in the horizontal plane
             if (yawVector.LengthSquared() > 0.0001)
             {
@@ -474,7 +385,7 @@ namespace IngameScript
                 yawError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(yawVector, Vector3D.Forward), -1, 1));
                 if (localTarget.X < 0) yawError = -yawError;
             }
-            
+
             // Pitch: angle in the vertical plane
             if (pitchVector.LengthSquared() > 0.0001)
             {
@@ -482,29 +393,51 @@ namespace IngameScript
                 pitchError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(pitchVector, Vector3D.Forward), -1, 1));
                 if (localTarget.Y < 0) pitchError = -pitchError;
             }
-            
+
             // === TILT LIMITING ===
             // Clamp pitch error to maximum tilt angle to prevent flipping
-            pitchError = MathHelper.Clamp(pitchError, -_maxTiltAngle, _maxTiltAngle);
-
-            // === ROLL: Align with gravity if available ===
-            Vector3D gravityVec = _reference.GetNaturalGravity();
-            if (gravityVec.LengthSquared() > 0.1)
+            if (!hasCustomUp)  // Only limit tilt when using gravity reference
             {
-                Vector3D worldUp = -Vector3D.Normalize(gravityVec);
-                
-                // Project world up onto the plane perpendicular to forward
-                Vector3D worldUpProjected = worldUp - currentForward * Vector3D.Dot(worldUp, currentForward);
-                if (worldUpProjected.LengthSquared() > 0.001)
+                pitchError = MathHelper.Clamp(pitchError, -_maxTiltAngle, _maxTiltAngle);
+            }
+
+            // === ROLL: Align with up vector (gravity or custom) ===
+            // For gravity-based roll: use the fixed world up, not "perpendicular to current forward"
+            // This prevents roll drift during yaw/pitch rotations
+            if (hasCustomUp)
+            {
+                // Docking: use custom up projected perpendicular to current forward
+                Vector3D upProjected = worldUp - currentForward * Vector3D.Dot(worldUp, currentForward);
+                if (upProjected.LengthSquared() > 0.001)
                 {
-                    worldUpProjected = Vector3D.Normalize(worldUpProjected);
-                    double rollDot = Vector3D.Dot(currentUp, worldUpProjected);
-                    double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, worldUpProjected));
+                    upProjected = Vector3D.Normalize(upProjected);
+                    double rollDot = Vector3D.Dot(currentUp, upProjected);
+                    double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, upProjected));
+                    rollError = Math.Atan2(rollCross, rollDot);
+                }
+            }
+            else
+            {
+                // Normal flight: keep wings level relative to horizon (fixed world reference)
+                // Calculate roll by checking if our right axis is horizontal
+                Vector3D currentRight = refMatrix.Right;
+
+                // Project our right axis onto the horizontal plane
+                Vector3D horizontalRight = currentRight - worldUp * Vector3D.Dot(currentRight, worldUp);
+
+                if (horizontalRight.LengthSquared() > 0.001)
+                {
+                    horizontalRight = Vector3D.Normalize(horizontalRight);
+
+                    // Roll error is how far our right axis deviates from horizontal
+                    double rollDot = Vector3D.Dot(currentRight, horizontalRight);
+                    Vector3D rollCrossVec = Vector3D.Cross(currentRight, horizontalRight);
+                    double rollCross = Vector3D.Dot(rollCrossVec, currentForward);
                     rollError = Math.Atan2(rollCross, rollDot);
                 }
             }
 
-            // Apply control
+            // Apply full orientation control
             ApplyOrientationControl(pitchError, yawError, rollError);
             return true;
         }
@@ -512,17 +445,14 @@ namespace IngameScript
         /// <summary>
         /// Orients the grid so a specific connector faces the target direction.
         /// Used for docking where the connector (not the ship's nose) must align.
-        /// 
-        /// Inspired by SEAD2's AlignWithGravity which creates a virtual reference
-        /// frame based on connector orientation.
         /// </summary>
         /// <param name="connector">The connector to align</param>
         /// <param name="targetDirection">World direction the connector should face</param>
         /// <param name="desiredUp">Desired up direction (world space)</param>
         /// <returns>True if orientation was applied</returns>
         public bool AlignConnectorToDirection(
-            Sandbox.ModAPI.Ingame.IMyShipConnector connector, 
-            Vector3D targetDirection, 
+            Sandbox.ModAPI.Ingame.IMyShipConnector connector,
+            Vector3D targetDirection,
             Vector3D desiredUp)
         {
             if (_reference == null || _gyros.Count == 0 || connector == null)
@@ -538,52 +468,12 @@ namespace IngameScript
             MatrixD shipMatrix = _reference.WorldMatrix;
             MatrixD connectorMatrix = connector.WorldMatrix;
 
-            // Current connector forward (world space)
-            Vector3D connectorForward = connectorMatrix.Forward;
-
-            // We want connectorForward to equal targetDirection
-            // Calculate the rotation needed to align connector to target
-
-            // Error: angle between current connector forward and target direction
-            double alignmentDot = Vector3D.Dot(connectorForward, targetDirection);
-            alignmentDot = MathHelper.Clamp(alignmentDot, -1, 1);
-
-            // Transform target direction to ship-local space for control
-            Vector3D targetLocal = Vector3D.TransformNormal(targetDirection, MatrixD.Transpose(shipMatrix));
-            Vector3D connectorForwardLocal = Vector3D.TransformNormal(connectorForward, MatrixD.Transpose(shipMatrix));
-
-            // We need the ship to rotate so connectorForwardLocal aligns with targetLocal
-            // The rotation axis is the cross product, and angle is from dot product
-
-            // Calculate errors in ship-local pitch, yaw, roll
-            // This depends on which way the connector faces on the ship
-            
-            // Get connector's orientation relative to ship
-            // connectorForwardLocal tells us which ship axis the connector faces
-            // e.g., (0, -1, 0) means connector faces ship's -Y (belly)
-
-            // The target in connector-relative terms
-            // We want connectorForward (world) = targetDirection
-            // So we calculate how the SHIP needs to rotate
-
-            // Use a simplified approach: calculate desired ship forward/up
-            // based on connector alignment requirements
-
-            // For connectors not aligned with ship forward (belly, rear, etc.),
-            // we need to compute what ship orientation achieves the connector alignment.
-
-            // Approach: treat connector forward as the "virtual forward" and use
-            // a rotation from connector orientation to ship orientation
-
             // Get rotation from ship to connector
             MatrixD shipToConnector = connectorMatrix * MatrixD.Invert(shipMatrix);
 
-            // What we want: connectorMatrix.Forward = targetDirection
-            // So: (shipToConnector * desiredShipMatrix).Forward = targetDirection
-            
             // Build desired orientation where connector would face target
             Vector3D desiredConnectorForward = targetDirection;
-            
+
             // Orthogonalize desiredUp to be perpendicular to connector forward
             Vector3D desiredConnectorUp = desiredUp - desiredConnectorForward * Vector3D.Dot(desiredUp, desiredConnectorForward);
             if (desiredConnectorUp.LengthSquared() < 0.001)
@@ -594,13 +484,8 @@ namespace IngameScript
             desiredConnectorUp = Vector3D.Normalize(desiredConnectorUp);
 
             // Build desired connector world matrix
-            // Right = Forward × Up for right-handed coordinate system
             Vector3D desiredConnectorRight = Vector3D.Cross(desiredConnectorForward, desiredConnectorUp);
-            
-            // MatrixD constructor takes values in row-major order:
-            // M11, M12, M13, M14, M21, M22, M23, M24, M31, M32, M33, M34, M41, M42, M43, M44
-            // In SE's MatrixD: Row0 = Right, Row1 = Up, Row2 = Backward (note: -Forward!), Row3 = Translation
-            // We need to store -Forward in Row2 to match SE's convention
+
             MatrixD desiredConnectorMatrix = new MatrixD(
                 desiredConnectorRight.X, desiredConnectorRight.Y, desiredConnectorRight.Z, 0,
                 desiredConnectorUp.X, desiredConnectorUp.Y, desiredConnectorUp.Z, 0,
@@ -608,94 +493,12 @@ namespace IngameScript
                 0, 0, 0, 1
             );
 
-            // Calculate desired ship matrix
-            // desiredConnectorMatrix = shipToConnector * desiredShipMatrix
-            // desiredShipMatrix = Invert(shipToConnector) * desiredConnectorMatrix
+            // Calculate desired ship orientation
             MatrixD connectorToShip = MatrixD.Invert(shipToConnector);
             MatrixD desiredShipMatrix = connectorToShip * desiredConnectorMatrix;
 
-            // Now we have the desired ship forward and up
-            Vector3D desiredShipForward = desiredShipMatrix.Forward;
-            Vector3D desiredShipUp = desiredShipMatrix.Up;
-
-            // Use orientation control with the computed desired forward and up
-            return OrientTowardWithUp(desiredShipForward, desiredShipUp);
-        }
-
-        /// <summary>
-        /// Orients the grid so its forward vector aligns with the specified world direction,
-        /// and its up vector aligns with the specified up direction.
-        /// Used for docking where we need to match the target orientation, not gravity.
-        /// </summary>
-        /// <param name="worldForward">The world-space forward direction to face</param>
-        /// <param name="worldUp">The world-space up direction to align with</param>
-        /// <returns>True if orientation was applied</returns>
-        public bool OrientTowardWithUp(Vector3D worldForward, Vector3D worldUp)
-        {
-            if (_reference == null || _gyros.Count == 0)
-                return false;
-                
-            if (worldForward.LengthSquared() < 0.001 || worldUp.LengthSquared() < 0.001)
-                return false;
-
-            Vector3D desiredForward = Vector3D.Normalize(worldForward);
-            Vector3D desiredUp = Vector3D.Normalize(worldUp);
-            
-            // Orthogonalize up to be perpendicular to forward
-            desiredUp = desiredUp - desiredForward * Vector3D.Dot(desiredUp, desiredForward);
-            if (desiredUp.LengthSquared() < 0.001)
-                desiredUp = Vector3D.CalculatePerpendicularVector(desiredForward);
-            desiredUp = Vector3D.Normalize(desiredUp);
-
-            MatrixD refMatrix = _reference.WorldMatrix;
-            Vector3D currentForward = refMatrix.Forward;
-            Vector3D currentUp = refMatrix.Up;
-
-            // === Transform to local space using LookAt matrix ===
-            MatrixD lookAtMatrix = MatrixD.CreateLookAt(Vector3D.Zero, refMatrix.Forward, refMatrix.Up);
-            Vector3D localTarget = Vector3D.TransformNormal(desiredForward, lookAtMatrix);
-            
-            // In this local space: +Z is forward, +Y is up, +X is right
-            Vector3D yawVector = new Vector3D(localTarget.X, 0, localTarget.Z);
-            Vector3D pitchVector = new Vector3D(0, localTarget.Y, localTarget.Z);
-            
-            double yawError = 0;
-            double pitchError = 0;
-            double rollError = 0;
-            
-            // Yaw: angle in the horizontal plane
-            if (yawVector.LengthSquared() > 0.0001)
-            {
-                yawVector = Vector3D.Normalize(yawVector);
-                yawError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(yawVector, Vector3D.Forward), -1, 1));
-                if (localTarget.X < 0) yawError = -yawError;
-            }
-            
-            // Pitch: angle in the vertical plane
-            if (pitchVector.LengthSquared() > 0.0001)
-            {
-                pitchVector = Vector3D.Normalize(pitchVector);
-                pitchError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(pitchVector, Vector3D.Forward), -1, 1));
-                if (localTarget.Y < 0) pitchError = -pitchError;
-            }
-            
-            // === TILT LIMITING ===
-            pitchError = MathHelper.Clamp(pitchError, -_maxTiltAngle, _maxTiltAngle);
-
-            // === ROLL: Align with desired up direction (not gravity) ===
-            // Project desired up onto the plane perpendicular to current forward
-            Vector3D desiredUpProjected = desiredUp - currentForward * Vector3D.Dot(desiredUp, currentForward);
-            if (desiredUpProjected.LengthSquared() > 0.001)
-            {
-                desiredUpProjected = Vector3D.Normalize(desiredUpProjected);
-                double rollDot = Vector3D.Dot(currentUp, desiredUpProjected);
-                double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, desiredUpProjected));
-                rollError = Math.Atan2(rollCross, rollDot);
-            }
-
-            // Apply control
-            ApplyOrientationControl(pitchError, yawError, rollError);
-            return true;
+            // Use orientation control with the computed desired forward and up (never use level turn for docking)
+            return OrientToward(desiredShipMatrix.Forward, desiredShipMatrix.Up, false);
         }
 
         /// <summary>
@@ -711,7 +514,7 @@ namespace IngameScript
 
             // Total angular error for status display and deadband
             TotalError = Math.Sqrt(pitchError * pitchError + yawError * yawError + rollError * rollError);
-            
+
             // === Deadband without PID reset ===
             if (TotalError < ALIGNMENT_DEADBAND)
             {
@@ -722,13 +525,13 @@ namespace IngameScript
 
             // Calculate angular velocity (how fast we're rotating)
             double angularVelocity = Math.Sqrt(
-                _lastPitchVelocity * _lastPitchVelocity + 
+                _lastPitchVelocity * _lastPitchVelocity +
                 _lastYawVelocity * _lastYawVelocity
             );
 
             // === Multi-stage control with proper PID gating ===
             Vector3D correction;
-            
+
             if (TotalError > DAMPEN_THRESHOLD)
             {
                 // Large error: use dampened sinusoidal control
@@ -737,7 +540,7 @@ namespace IngameScript
                     yawBraking ? 0 : DampenAngle(yawError),
                     rollBraking ? 0 : DampenAngle(rollError) * 0.5
                 );
-                
+
                 // Reset PID when in coarse mode to prevent integral windup
                 if (_pidActive)
                 {
@@ -749,10 +552,10 @@ namespace IngameScript
             {
                 // Fine control: PID only when close AND/OR moving slowly
                 _pidActive = true;
-                
+
                 Vector3D localError = new Vector3D(pitchError, yawError, rollError);
                 correction = _orientationPID.Compute(localError, _deltaTime);
-                
+
                 // Cap output like SkunkBot does
                 correction = new Vector3D(
                     MathHelper.Clamp(correction.X, -PID_MAX_OUTPUT, PID_MAX_OUTPUT),
@@ -781,14 +584,14 @@ namespace IngameScript
         private double DampenAngle(double angle)
         {
             if (Math.Abs(angle) < 0.001) return 0;
-            
+
             double sign = Math.Sign(angle);
             double absAngle = Math.Abs(angle);
-            
+
             // Above threshold, return max speed
             if (absAngle > DAMPEN_THRESHOLD * 5)  // ~30 degrees
                 return sign * MAX_ANGULAR_VELOCITY;
-            
+
             // Sinusoidal ramp: smooth acceleration and deceleration
             double t = absAngle / (DAMPEN_THRESHOLD * 5);
             return sign * Math.Sin(t * Math.PI / 2) * MAX_ANGULAR_VELOCITY;
@@ -801,24 +604,24 @@ namespace IngameScript
         {
             double dt = _deltaTime;
             if (dt < 0.001) dt = 0.016;  // Default to ~60fps if dt is invalid
-            
+
             // Calculate current angular velocity (change in error per second)
             double velocity = Math.Abs(lastError - currentError) / dt;
-            
+
             // Calculate deceleration rate
             double decel = Math.Abs(lastVelocity - velocity) / dt;
-            
+
             // Estimate time to reach target vs time to stop
             double timeToTarget = velocity > 0.001 ? Math.Abs(currentError) / velocity : double.MaxValue;
             double timeToStop = decel > 0.001 ? velocity / decel : double.MaxValue;
-            
+
             // Are we getting closer?
             bool closing = Math.Abs(currentError) < Math.Abs(lastError);
-            
+
             // Update state for next tick
             lastError = currentError;
             lastVelocity = velocity;
-            
+
             // Brake if: closing AND would overshoot AND not already very close
             return closing && timeToStop > timeToTarget * 1.2 && Math.Abs(currentError) > ALIGNMENT_DEADBAND * 2;
         }
@@ -834,7 +637,7 @@ namespace IngameScript
                 return;
 
             MatrixD refMatrix = _reference.WorldMatrix;
-            
+
             // Negate pitch at input (SE gyro convention)
             Vector3D rotationVec = new Vector3D(-localRotation.X, localRotation.Y, localRotation.Z);
             Vector3D worldRotation = Vector3D.TransformNormal(rotationVec, refMatrix);
@@ -878,7 +681,7 @@ namespace IngameScript
                 }
             }
         }
-        
+
         /// <summary>
         /// Gets the count of available gyros.
         /// </summary>

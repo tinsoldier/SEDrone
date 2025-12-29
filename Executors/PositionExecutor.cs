@@ -203,7 +203,6 @@ namespace IngameScript
                 case ApproachPhase.AltitudeAdjust:
                     if (targetMostlyVertical)
                     {
-                        ctx.Gyros.ResetTurnLock();
                         ctx.Gyros.OrientLevel();
                     }
                     else

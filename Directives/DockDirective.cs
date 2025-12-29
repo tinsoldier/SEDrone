@@ -117,12 +117,13 @@ namespace IngameScript
                     if(currentIndex == 0)
                     {
                         // First waypoint: ensure velocity is arrested and matched to leader
+                        // Use level turn to prevent rolling during the initial 180° rotation
                         yield return new BehaviorIntent
                         {
                             Position = new Approach(
                                 () => helpers.GetWaypointAtDistance(waypointDistances[currentIndex]),
                                 speedLimit: ctx.Config.DockingApproachSpeed),
-                            Orientation = dockingOrientation,
+                            Orientation = new LevelTurnToward(() => helpers.GetWaypointAtDistance(waypointDistances[currentIndex]) + helpers.GetTargetConnectorUp() * 20.0),
                             ExitWhen = () =>
                             {
                                 // Check distance
