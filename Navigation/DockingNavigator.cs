@@ -89,7 +89,8 @@ namespace IngameScript
 
             return new List<double>
             {
-                clearance + 20,   // Mid approach  
+                clearance + 20,   // Far approach
+                clearance + 15,   // Mid approach  
                 clearance + 5,    // Near approach
                 clearance         // Final docking position
             };
@@ -116,7 +117,8 @@ namespace IngameScript
 
             var waypoints = new List<Vector3D>
             {
-                connectorForward * (clearance + 20),  // Mid approach
+                connectorForward * (clearance + 20),  // Far approach
+                connectorForward * (clearance + 15),  // Mid approach
                 connectorForward * (clearance + 5),   // Near approach
                 connectorForward * clearance          // Final docking position
             };

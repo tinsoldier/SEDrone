@@ -229,7 +229,7 @@ namespace IngameScript
             double brakingAccel = GetBrakingAcceleration(worldApproachDirection);
             
             if (brakingAccel <= 0.01)
-                return 0.5; // Minimum crawl speed if no braking available
+                return 1; // Minimum crawl speed if no braking available
             
             // v = sqrt(2ad)
             return Math.Sqrt(2 * brakingAccel * distance);
@@ -321,6 +321,13 @@ namespace IngameScript
         {
             if (_reference == null)
                 return;
+
+            // === SAFE DEFAULT: Ensure dampeners are on before any movement ===
+            // This prevents issues when undocking or recovering from docked state
+            if (!_reference.DampenersOverride)
+            {
+                _reference.DampenersOverride = true;
+            }
             
             // Get current state
             Vector3D currentPosition = _reference.GetPosition();

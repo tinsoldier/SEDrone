@@ -116,7 +116,11 @@ namespace IngameScript
             );
 
             // Approach is decoupled - only control thrusters, not gyros
-            ctx.Thrusters.MoveToward(target, desiredVelocity, ctx.Config.MaxSpeed, ctx.Config.PrecisionRadius);
+            // Pass safeSpeed (which includes speedLimit) to ensure speed is properly capped
+            // For Approach behavior with explicit speedLimit, use minimal precision radius
+            // to avoid premature slowdown during docking
+            double precisionRadius = behavior.SpeedLimit > 0 ? 0.5 : ctx.Config.PrecisionRadius;
+            ctx.Thrusters.MoveToward(target, desiredVelocity, safeSpeed, precisionRadius);
         }
 
         private void ExecuteLevelFirstApproach(LevelFirstApproach behavior, DroneContext ctx)
@@ -166,7 +170,7 @@ namespace IngameScript
                     // Hover in place while turning
                     Vector3D hoverVelocity = _navigator.CalculateDesiredVelocity(
                         ctx.Position, ctx.Velocity, ctx.Position, leaderVelocity, safeSpeed * 0.5);
-                    ctx.Thrusters.MoveToward(ctx.Position, hoverVelocity, ctx.Config.MaxSpeed, ctx.Config.PrecisionRadius);
+                    ctx.Thrusters.MoveToward(ctx.Position, hoverVelocity, safeSpeed * 0.5, ctx.Config.PrecisionRadius);
 
                     if (ctx.Gyros.IsFacingTarget(target, LEVEL_TURN_COMPLETE_THRESHOLD))
                     {
@@ -188,7 +192,7 @@ namespace IngameScript
                         Vector3D horizontalTarget = target - worldUp * elevationDelta;
                         Vector3D desiredVelocity = _navigator.CalculateDesiredVelocity(
                             ctx.Position, ctx.Velocity, horizontalTarget, leaderVelocity, safeSpeed);
-                        ctx.Thrusters.MoveToward(horizontalTarget, desiredVelocity, ctx.Config.MaxSpeed, ctx.Config.PrecisionRadius);
+                        ctx.Thrusters.MoveToward(horizontalTarget, desiredVelocity, safeSpeed, ctx.Config.PrecisionRadius);
                     }
                     else
                     {
@@ -209,7 +213,7 @@ namespace IngameScript
 
                     Vector3D finalVelocity = _navigator.CalculateDesiredVelocity(
                         ctx.Position, ctx.Velocity, target, leaderVelocity, safeSpeed * 0.5);
-                    ctx.Thrusters.MoveToward(target, finalVelocity, ctx.Config.MaxSpeed, ctx.Config.PrecisionRadius);
+                    ctx.Thrusters.MoveToward(target, finalVelocity, safeSpeed * 0.5, ctx.Config.PrecisionRadius);
                     break;
             }
         }
@@ -233,7 +237,7 @@ namespace IngameScript
             Vector3D desiredVelocity = _navigator.CalculateDesiredVelocity(
                 ctx.Position, ctx.Velocity, formationPos, leaderVelocity, safeSpeed);
 
-            ctx.Thrusters.MoveToward(formationPos, desiredVelocity, ctx.Config.MaxSpeed, ctx.Config.PrecisionRadius);
+            ctx.Thrusters.MoveToward(formationPos, desiredVelocity, safeSpeed, ctx.Config.PrecisionRadius);
         }
 
         private void ExecuteLoiter(Loiter behavior, DroneContext ctx)
@@ -246,7 +250,7 @@ namespace IngameScript
                 double safeSpeed = ctx.Thrusters.GetSafeApproachSpeed(distance, toCenter);
                 Vector3D desiredVelocity = _navigator.CalculateDesiredVelocity(
                     ctx.Position, ctx.Velocity, behavior.Center, Vector3D.Zero, safeSpeed * 0.5);
-                ctx.Thrusters.MoveToward(behavior.Center, desiredVelocity, ctx.Config.MaxSpeed, ctx.Config.PrecisionRadius);
+                ctx.Thrusters.MoveToward(behavior.Center, desiredVelocity, safeSpeed * 0.5, ctx.Config.PrecisionRadius);
             }
             else
             {

@@ -188,5 +188,40 @@ namespace IngameScript
             double brakingDistance = Thrusters.GetBrakingDistance(Velocity.Length(), Velocity);
             return Navigator.HasExitedFormationWithBrakingMargin(distance, brakingDistance, 2.5);
         }
+
+        // === Docking state ===
+
+        /// <summary>
+        /// The currently active connector used for docking.
+        /// Set by DockDirective when connector is selected.
+        /// </summary>
+        public IMyShipConnector ActiveConnector { get; set; }
+
+        /// <summary>
+        /// Returns true if the drone is currently docked (connector connected).
+        /// </summary>
+        public bool IsDocked
+        {
+            get { return ActiveConnector != null && ActiveConnector.Status == MyShipConnectorStatus.Connected; }
+        }
+
+        /// <summary>
+        /// Disconnects the active connector if docked.
+        /// </summary>
+        public void Undock()
+        {
+            if (ActiveConnector != null && ActiveConnector.Status == MyShipConnectorStatus.Connected)
+            {
+                ActiveConnector.Disconnect();
+            }
+        }
+
+        /// <summary>
+        /// Enables or disables inertial dampeners.
+        /// </summary>
+        public void SetDampeners(bool enabled)
+        {
+            Reference.DampenersOverride = enabled;
+        }
     }
 }

@@ -39,6 +39,12 @@ namespace IngameScript
         public double MaxTiltAngle { get; set; } = 20.0;        // Max pitch from level (degrees)
         public double BrakingSafetyMargin { get; set; } = 0.8;   // Braking distance factor (0.0-1.0)
 
+        // === Docking Parameters ===
+        public double DockingApproachSpeed { get; set; } = 60.0;   // Speed during waypoint approach (m/s)
+        public double DockingFinalSpeed { get; set; } = 5.0;       // Speed during final alignment (m/s)
+        public double DockingLockSpeed { get; set; } = 2;        // Speed during lock attempt (m/s)
+        public bool DockingUseSuicideBurn { get; set; } = false;   // Use aggressive braking calculation
+
         // === Intercept Mode ===
         public double InterceptNoseUpAngle { get; set; } = 45.0;  // Default pitch-up angle when no positions available (degrees)
 
@@ -95,6 +101,12 @@ namespace IngameScript
             config.MinTerrainClearance = ini.Get("Flight", "MinTerrainClearance").ToDouble(config.MinTerrainClearance);
             config.MaxTiltAngle = ini.Get("Flight", "MaxTiltAngle").ToDouble(config.MaxTiltAngle);
             config.BrakingSafetyMargin = ini.Get("Flight", "BrakingSafetyMargin").ToDouble(config.BrakingSafetyMargin);
+
+            // === Docking Section ===
+            config.DockingApproachSpeed = ini.Get("Docking", "ApproachSpeed").ToDouble(config.DockingApproachSpeed);
+            config.DockingFinalSpeed = ini.Get("Docking", "FinalSpeed").ToDouble(config.DockingFinalSpeed);
+            config.DockingLockSpeed = ini.Get("Docking", "LockSpeed").ToDouble(config.DockingLockSpeed);
+            config.DockingUseSuicideBurn = ini.Get("Docking", "UseSuicideBurn").ToBoolean(config.DockingUseSuicideBurn);
 
             // === Intercept Section ===
             config.InterceptNoseUpAngle = ini.Get("Intercept", "NoseUpAngle").ToDouble(config.InterceptNoseUpAngle);
@@ -201,6 +213,16 @@ MaxTiltAngle=20
 ; 0.0 = tight formation (current behavior, may overshoot)
 ; 1.0 = always trail by full braking distance (very safe, may feel laggy)
 BrakingSafetyMargin=0.8
+
+[Docking]
+; Speed during waypoint approach (m/s)
+ApproachSpeed=40
+; Speed during final alignment (m/s)
+FinalSpeed=5.0
+; Speed during connector lock attempt (m/s)
+LockSpeed=2.0
+; Use aggressive suicide-burn style braking for faster docking
+UseSuicideBurn=false
 
 [PositionPID]
 Kp=2.0

@@ -25,6 +25,10 @@ namespace IngameScript
 
         public IEnumerable<BehaviorIntent> Execute(DroneContext ctx)
         {
+            // === Pre-flight: Undock if docked ===
+            foreach (var intent in PreFlight.EnsureUndocked(ctx))
+                yield return intent;
+
             while (true)
             {
                 // === No leader contact - wait and loiter ===

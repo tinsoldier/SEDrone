@@ -114,12 +114,48 @@ namespace IngameScript
                 {
                     int currentIndex = waypointIndex; // Capture for closure
 
-                    yield return new BehaviorIntent
+                    if(currentIndex == 0)
                     {
-                        Position = new Approach(() => helpers.GetWaypointAtDistance(waypointDistances[currentIndex])),
-                        Orientation = dockingOrientation,
-                        ExitWhen = () => ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex])) < 3.0
-                    };
+                        // First waypoint: ensure velocity is arrested and matched to leader
+                        yield return new BehaviorIntent
+                        {
+                            Position = new Approach(
+                                () => helpers.GetWaypointAtDistance(waypointDistances[currentIndex]),
+                                speedLimit: ctx.Config.DockingApproachSpeed),
+                            Orientation = dockingOrientation,
+                            ExitWhen = () =>
+                            {
+                                // Check distance
+                                if (ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex])) >= 3.0)
+                                    return false;
+
+                                // Check velocity matching (within 1 m/s of leader's velocity magnitude)
+                                Vector3D relativeVelocity = ctx.Velocity - ctx.LastLeaderState.Velocity;
+                                if (relativeVelocity.Length() > 1.0)
+                                    return false;
+
+                                // Check orientation alignment (within 5 degrees)
+                                // if(!ctx.Gyros.IsLevel(5.0))
+                                //     return false;
+
+                                if(!ctx.Gyros.IsAligned)
+                                    return false;
+
+                                return true;
+                            }
+                        };
+                    }
+                    else
+                    {
+                        yield return new BehaviorIntent
+                        {
+                            Position = new Approach(
+                                () => helpers.GetWaypointAtDistance(waypointDistances[currentIndex]),
+                                speedLimit: ctx.Config.DockingApproachSpeed),
+                            Orientation = dockingOrientation,
+                            ExitWhen = () => ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex])) < 3.0
+                        };
+                    }
 
                     waypointIndex++;
                 }
@@ -129,7 +165,8 @@ namespace IngameScript
                 yield return new BehaviorIntent
                 {
                     Position = new Approach(
-                        () => helpers.GetDockingApproach(droneConnectorSize, targetConnectorSize).Position),
+                        () => helpers.GetDockingApproach(droneConnectorSize, targetConnectorSize).Position,
+                        speedLimit: ctx.Config.DockingFinalSpeed),
                     Orientation = dockingOrientation,
                     ExitWhen = () => ctx.DistanceTo(helpers.GetDockingApproach(droneConnectorSize, targetConnectorSize).Position) < 0.5
                 };
@@ -140,11 +177,11 @@ namespace IngameScript
                 // This ensures precise positioning accounting for reference-to-connector offset
                 yield return new BehaviorIntent
                 {
-                    Position = new Approach(() => helpers.GetConnectorPosition(), speedLimit: 1.0),
+                    Position = new Approach(() => helpers.GetConnectorPosition(), speedLimit: ctx.Config.DockingFinalSpeed),
                     Orientation = dockingOrientation,
                     ExitWhen = () =>
                     {
-                        // Exit when connected
+                        // Exit when connected. e.g auto-connect or manual
                         if (droneConnector.Status == MyShipConnectorStatus.Connected)
                             return true;
 
@@ -177,7 +214,7 @@ namespace IngameScript
                     double lockStartTime = ctx.GameTime;
                     yield return new BehaviorIntent
                     {
-                        Position = new Approach(() => helpers.GetConnectorPosition(), speedLimit: 0.5),
+                        Position = new Approach(() => helpers.GetConnectorPosition(), speedLimit: ctx.Config.DockingLockSpeed),
                         Orientation = dockingOrientation,
                         ExitWhen = () =>
                             droneConnector.Status == MyShipConnectorStatus.Connected ||
@@ -186,6 +223,30 @@ namespace IngameScript
 
                     if (droneConnector.Status == MyShipConnectorStatus.Connected)
                     {
+                        // === PHASE 7: Docked - remain until undocked ===
+                        
+                        // Store connector reference for other code to check docked state
+                        ctx.ActiveConnector = droneConnector;
+                        
+                        // Disable dampeners to avoid fighting parent grid movement
+                        ctx.SetDampeners(false);
+                        
+                        // Wait while docked - exit when disconnected
+                        while (droneConnector.Status == MyShipConnectorStatus.Connected)
+                        {
+                            yield return new BehaviorIntent
+                            {
+                                Position = null,      // No movement while docked
+                                Orientation = null,   // No rotation while docked
+                                ExitWhen = () => droneConnector.Status != MyShipConnectorStatus.Connected
+                            };
+                        }
+                        
+                        // Disconnected - re-enable dampeners (also done by ThrusterController as safety)
+                        ctx.SetDampeners(true);
+                        ctx.ActiveConnector = null;
+                        
+                        // Exit directive - will fall through to EscortDirective
                         yield return BehaviorIntent.Complete();
                         yield break;
                     }
