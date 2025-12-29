@@ -198,7 +198,7 @@ namespace IngameScript
                     else
                     {
                         Echo($"Unknown command: {argument}");
-                        Echo("Available commands: RELOAD, STATUS, STOP, START, DOCK, ESCORT");
+                        Echo("Available commands: RELOAD, STATUS, STOP, START, DOCK, FASTDOCK, ESCORT");
                         if (_config.Role == GridRole.Leader)
                         {
                             Echo("Leader commands: DOCK_ALL, ESCORT_ALL, FORMUP_ALL");
@@ -227,6 +227,27 @@ namespace IngameScript
             droneBrain.SetDirective(new DockDirective());
             Echo("Switching to DOCK directive.");
             Echo("Requesting docking pad from leader...");
+        }
+
+        private void HandleFastDockCommand()
+        {
+            if (_config.Role != GridRole.Drone)
+            {
+                Echo("ERROR: FASTDOCK command only works for drones.");
+                return;
+            }
+
+            var droneBrain = _activeBrain as DroneBrain;
+            if (droneBrain == null)
+            {
+                Echo("ERROR: Drone brain not active.");
+                return;
+            }
+
+            // Switch to FastDockDirective
+            droneBrain.SetDirective(new FastDockDirective());
+            Echo("Switching to FASTDOCK directive.");
+            Echo("Using stateless docking logic (SEAD2-style)...");
         }
 
         private void HandleEscortCommand()
@@ -267,6 +288,11 @@ namespace IngameScript
             if (cmd == "DOCK_ALL")
             {
                 droneCommand = DroneCommand.Dock;
+                broadcast = true;
+            }
+            else if (cmd == "FASTDOCK")
+            {
+                droneCommand = DroneCommand.FastDock;
                 broadcast = true;
             }
             else if (cmd == "ESCORT_ALL")

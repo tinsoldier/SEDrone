@@ -103,6 +103,7 @@ namespace IngameScript
     {
         None,
         Dock,           // Initiate docking sequence
+        FastDock,       // Initiate fast docking sequence
         Escort,         // Return to escort/formation mode
         FormUp,         // Return to formation positions
         HoldPosition,   // Stop and hover

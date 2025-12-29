@@ -445,6 +445,11 @@ namespace IngameScript
                     Echo?.Invoke("[Drone] Received DOCK command from leader");
                     break;
 
+                case DroneCommand.FastDock:
+                    SetDirective(new FastDockDirective());
+                    Echo?.Invoke("[Drone] Received FASTDOCK command from leader");
+                    break;
+
                 case DroneCommand.Escort:
                     SetDirective(new EscortDirective());
                     Echo?.Invoke("[Drone] Received ESCORT command from leader");
