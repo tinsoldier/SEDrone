@@ -34,7 +34,7 @@ namespace IngameScript
         public Vector3D CalculateFormationPosition(LeaderStateMessage leader, Vector3D localOffset)
         {
             // Build leader's orientation basis vectors
-            Vector3D leaderRight = Vector3D.Cross(leader.Forward, leader.Up);
+            Vector3D leaderRight = Vector3D.Cross(leader.Up, leader.Forward);
 
             // Transform offset from leader-local to world space
             Vector3D worldOffset =

@@ -121,18 +121,45 @@ namespace IngameScript
             // Calculate connector position relative to leader reference
             Vector3D connectorWorldPos = connector.GetPosition();
             Vector3D leaderPos = _reference.GetPosition();
-            Vector3D offset = connectorWorldPos - leaderPos;
+            Vector3D offsetWorld = connectorWorldPos - leaderPos;
 
-            // Transform offset to leader-local space
-            MatrixD leaderMatrix = _reference.WorldMatrix;
-            Vector3D localOffset = Vector3D.TransformNormal(offset, MatrixD.Transpose(leaderMatrix));
+            // Build coordinate matrix exactly like SEAD2
+            // SEAD2: Matrix.CreateWorld(pos, forward, (-left).Cross(forward))
+            // CRITICAL: Use the exact same formula on both encoding and decoding sides!
+            MatrixD refMatrix = _reference.WorldMatrix;
+            Vector3D leaderForward = refMatrix.Forward;
+            Vector3D leaderLeft = refMatrix.Left;
 
-            // Transform connector directions to leader-local space
+            // SEAD2 formula: up = (-left) × forward
+            MatrixD coordinateMatrix = MatrixD.CreateWorld(
+                leaderPos,
+                leaderForward,
+                Vector3D.Cross(-leaderLeft, leaderForward)
+            );
+
+            // Transform using SEAD2's method: TransformNormal with matrix transpose
+            Vector3D localOffset = Vector3D.TransformNormal(offsetWorld, MatrixD.Transpose(coordinateMatrix));
+
+            // DEBUG: Output connector offset in leader-local coordinates
+            string debugMsg = string.Format("[DOCK] Connector: {0}\nLocal Offset: X={1:F2} Y={2:F2} Z={3:F2}\nWorld Offset: {4:F2},{5:F2},{6:F2}",
+                connector.CustomName,
+                localOffset.X, localOffset.Y, localOffset.Z,
+                offsetWorld.X, offsetWorld.Y, offsetWorld.Z);
+            _echo?.Invoke(debugMsg);
+
+            // Also log to a text panel or LCD named "Debug" if available
+            var debugBlock = _gts.GetBlockWithName("Debug") as IMyTextPanel;
+            if (debugBlock != null)
+            {
+                debugBlock.WriteText(debugMsg + "\n", true);
+            }
+
+            // Transform connector directions using SEAD2's method
             Vector3D connectorForwardWorld = connector.WorldMatrix.Forward;
             Vector3D connectorUpWorld = connector.WorldMatrix.Up;
 
-            Vector3D connectorForwardLocal = Vector3D.TransformNormal(connectorForwardWorld, MatrixD.Transpose(leaderMatrix));
-            Vector3D connectorUpLocal = Vector3D.TransformNormal(connectorUpWorld, MatrixD.Transpose(leaderMatrix));
+            Vector3D connectorForwardLocal = Vector3D.TransformNormal(connectorForwardWorld, MatrixD.Transpose(coordinateMatrix));
+            Vector3D connectorUpLocal = Vector3D.TransformNormal(connectorUpWorld, MatrixD.Transpose(coordinateMatrix));
 
             return new DockingPadResponse
             {

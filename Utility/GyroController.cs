@@ -128,7 +128,7 @@ namespace IngameScript
             Vector3D gravity = _reference.GetNaturalGravity();
             
             // Fallback right vector in case leader is pointing straight up/down
-            Vector3D leaderRight = Vector3D.Cross(leaderForward, leaderUp);
+            Vector3D leaderRight = Vector3D.Cross(leaderUp, leaderForward);
             
             Vector3D horizontalForward = VectorMath.ProjectOntoHorizontalPlane(leaderForward, gravity, leaderRight);
             
@@ -502,6 +502,195 @@ namespace IngameScript
                     double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, worldUpProjected));
                     rollError = Math.Atan2(rollCross, rollDot);
                 }
+            }
+
+            // Apply control
+            ApplyOrientationControl(pitchError, yawError, rollError);
+            return true;
+        }
+
+        /// <summary>
+        /// Orients the grid so a specific connector faces the target direction.
+        /// Used for docking where the connector (not the ship's nose) must align.
+        /// 
+        /// Inspired by SEAD2's AlignWithGravity which creates a virtual reference
+        /// frame based on connector orientation.
+        /// </summary>
+        /// <param name="connector">The connector to align</param>
+        /// <param name="targetDirection">World direction the connector should face</param>
+        /// <param name="desiredUp">Desired up direction (world space)</param>
+        /// <returns>True if orientation was applied</returns>
+        public bool AlignConnectorToDirection(
+            Sandbox.ModAPI.Ingame.IMyShipConnector connector, 
+            Vector3D targetDirection, 
+            Vector3D desiredUp)
+        {
+            if (_reference == null || _gyros.Count == 0 || connector == null)
+                return false;
+
+            if (targetDirection.LengthSquared() < 0.001)
+                return false;
+
+            targetDirection = Vector3D.Normalize(targetDirection);
+            desiredUp = Vector3D.Normalize(desiredUp);
+
+            // Get current orientations
+            MatrixD shipMatrix = _reference.WorldMatrix;
+            MatrixD connectorMatrix = connector.WorldMatrix;
+
+            // Current connector forward (world space)
+            Vector3D connectorForward = connectorMatrix.Forward;
+
+            // We want connectorForward to equal targetDirection
+            // Calculate the rotation needed to align connector to target
+
+            // Error: angle between current connector forward and target direction
+            double alignmentDot = Vector3D.Dot(connectorForward, targetDirection);
+            alignmentDot = MathHelper.Clamp(alignmentDot, -1, 1);
+
+            // Transform target direction to ship-local space for control
+            Vector3D targetLocal = Vector3D.TransformNormal(targetDirection, MatrixD.Transpose(shipMatrix));
+            Vector3D connectorForwardLocal = Vector3D.TransformNormal(connectorForward, MatrixD.Transpose(shipMatrix));
+
+            // We need the ship to rotate so connectorForwardLocal aligns with targetLocal
+            // The rotation axis is the cross product, and angle is from dot product
+
+            // Calculate errors in ship-local pitch, yaw, roll
+            // This depends on which way the connector faces on the ship
+            
+            // Get connector's orientation relative to ship
+            // connectorForwardLocal tells us which ship axis the connector faces
+            // e.g., (0, -1, 0) means connector faces ship's -Y (belly)
+
+            // The target in connector-relative terms
+            // We want connectorForward (world) = targetDirection
+            // So we calculate how the SHIP needs to rotate
+
+            // Use a simplified approach: calculate desired ship forward/up
+            // based on connector alignment requirements
+
+            // For connectors not aligned with ship forward (belly, rear, etc.),
+            // we need to compute what ship orientation achieves the connector alignment.
+
+            // Approach: treat connector forward as the "virtual forward" and use
+            // a rotation from connector orientation to ship orientation
+
+            // Get rotation from ship to connector
+            MatrixD shipToConnector = connectorMatrix * MatrixD.Invert(shipMatrix);
+
+            // What we want: connectorMatrix.Forward = targetDirection
+            // So: (shipToConnector * desiredShipMatrix).Forward = targetDirection
+            
+            // Build desired orientation where connector would face target
+            Vector3D desiredConnectorForward = targetDirection;
+            
+            // Orthogonalize desiredUp to be perpendicular to connector forward
+            Vector3D desiredConnectorUp = desiredUp - desiredConnectorForward * Vector3D.Dot(desiredUp, desiredConnectorForward);
+            if (desiredConnectorUp.LengthSquared() < 0.001)
+            {
+                // desiredUp is parallel to forward, pick an arbitrary perpendicular
+                desiredConnectorUp = Vector3D.CalculatePerpendicularVector(desiredConnectorForward);
+            }
+            desiredConnectorUp = Vector3D.Normalize(desiredConnectorUp);
+
+            // Build desired connector world matrix
+            // Right = Forward × Up for right-handed coordinate system
+            Vector3D desiredConnectorRight = Vector3D.Cross(desiredConnectorForward, desiredConnectorUp);
+            
+            // MatrixD constructor takes values in row-major order:
+            // M11, M12, M13, M14, M21, M22, M23, M24, M31, M32, M33, M34, M41, M42, M43, M44
+            // In SE's MatrixD: Row0 = Right, Row1 = Up, Row2 = Backward (note: -Forward!), Row3 = Translation
+            // We need to store -Forward in Row2 to match SE's convention
+            MatrixD desiredConnectorMatrix = new MatrixD(
+                desiredConnectorRight.X, desiredConnectorRight.Y, desiredConnectorRight.Z, 0,
+                desiredConnectorUp.X, desiredConnectorUp.Y, desiredConnectorUp.Z, 0,
+                -desiredConnectorForward.X, -desiredConnectorForward.Y, -desiredConnectorForward.Z, 0,
+                0, 0, 0, 1
+            );
+
+            // Calculate desired ship matrix
+            // desiredConnectorMatrix = shipToConnector * desiredShipMatrix
+            // desiredShipMatrix = Invert(shipToConnector) * desiredConnectorMatrix
+            MatrixD connectorToShip = MatrixD.Invert(shipToConnector);
+            MatrixD desiredShipMatrix = connectorToShip * desiredConnectorMatrix;
+
+            // Now we have the desired ship forward and up
+            Vector3D desiredShipForward = desiredShipMatrix.Forward;
+            Vector3D desiredShipUp = desiredShipMatrix.Up;
+
+            // Use orientation control with the computed desired forward and up
+            return OrientTowardWithUp(desiredShipForward, desiredShipUp);
+        }
+
+        /// <summary>
+        /// Orients the grid so its forward vector aligns with the specified world direction,
+        /// and its up vector aligns with the specified up direction.
+        /// Used for docking where we need to match the target orientation, not gravity.
+        /// </summary>
+        /// <param name="worldForward">The world-space forward direction to face</param>
+        /// <param name="worldUp">The world-space up direction to align with</param>
+        /// <returns>True if orientation was applied</returns>
+        public bool OrientTowardWithUp(Vector3D worldForward, Vector3D worldUp)
+        {
+            if (_reference == null || _gyros.Count == 0)
+                return false;
+                
+            if (worldForward.LengthSquared() < 0.001 || worldUp.LengthSquared() < 0.001)
+                return false;
+
+            Vector3D desiredForward = Vector3D.Normalize(worldForward);
+            Vector3D desiredUp = Vector3D.Normalize(worldUp);
+            
+            // Orthogonalize up to be perpendicular to forward
+            desiredUp = desiredUp - desiredForward * Vector3D.Dot(desiredUp, desiredForward);
+            if (desiredUp.LengthSquared() < 0.001)
+                desiredUp = Vector3D.CalculatePerpendicularVector(desiredForward);
+            desiredUp = Vector3D.Normalize(desiredUp);
+
+            MatrixD refMatrix = _reference.WorldMatrix;
+            Vector3D currentForward = refMatrix.Forward;
+            Vector3D currentUp = refMatrix.Up;
+
+            // === Transform to local space using LookAt matrix ===
+            MatrixD lookAtMatrix = MatrixD.CreateLookAt(Vector3D.Zero, refMatrix.Forward, refMatrix.Up);
+            Vector3D localTarget = Vector3D.TransformNormal(desiredForward, lookAtMatrix);
+            
+            // In this local space: +Z is forward, +Y is up, +X is right
+            Vector3D yawVector = new Vector3D(localTarget.X, 0, localTarget.Z);
+            Vector3D pitchVector = new Vector3D(0, localTarget.Y, localTarget.Z);
+            
+            double yawError = 0;
+            double pitchError = 0;
+            double rollError = 0;
+            
+            // Yaw: angle in the horizontal plane
+            if (yawVector.LengthSquared() > 0.0001)
+            {
+                yawVector = Vector3D.Normalize(yawVector);
+                yawError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(yawVector, Vector3D.Forward), -1, 1));
+                if (localTarget.X < 0) yawError = -yawError;
+            }
+            
+            // Pitch: angle in the vertical plane
+            if (pitchVector.LengthSquared() > 0.0001)
+            {
+                pitchVector = Vector3D.Normalize(pitchVector);
+                pitchError = Math.Acos(MathHelper.Clamp(Vector3D.Dot(pitchVector, Vector3D.Forward), -1, 1));
+                if (localTarget.Y < 0) pitchError = -pitchError;
+            }
+            
+            // === TILT LIMITING ===
+            pitchError = MathHelper.Clamp(pitchError, -_maxTiltAngle, _maxTiltAngle);
+
+            // === ROLL: Align with desired up direction (not gravity) ===
+            // Project desired up onto the plane perpendicular to current forward
+            Vector3D desiredUpProjected = desiredUp - currentForward * Vector3D.Dot(desiredUp, currentForward);
+            if (desiredUpProjected.LengthSquared() > 0.001)
+            {
+                desiredUpProjected = Vector3D.Normalize(desiredUpProjected);
+                double rollDot = Vector3D.Dot(currentUp, desiredUpProjected);
+                double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, desiredUpProjected));
+                rollError = Math.Atan2(rollCross, rollDot);
             }
 
             // Apply control

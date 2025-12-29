@@ -17,13 +17,14 @@ namespace IngameScript
         public Vector3D Velocity;       // World velocity
         public Vector3D Forward;        // Forward direction vector
         public Vector3D Up;             // Up direction vector
+        public Vector3D Left;           // Left direction vector (needed for SEAD2-compatible transforms)
 
         // === Timestamp ===
         public double Timestamp;        // Game time when message was created
 
         /// <summary>
         /// Serializes the message to a string for IGC transmission.
-        /// Format: EntityId|GridName|PosX|PosY|PosZ|VelX|VelY|VelZ|FwdX|FwdY|FwdZ|UpX|UpY|UpZ|Timestamp
+        /// Format: EntityId|GridName|PosX|PosY|PosZ|VelX|VelY|VelZ|FwdX|FwdY|FwdZ|UpX|UpY|UpZ|LeftX|LeftY|LeftZ|Timestamp
         /// </summary>
         public string Serialize()
         {
@@ -34,6 +35,7 @@ namespace IngameScript
                 Velocity.X, Velocity.Y, Velocity.Z,
                 Forward.X, Forward.Y, Forward.Z,
                 Up.X, Up.Y, Up.Z,
+                Left.X, Left.Y, Left.Z,
                 Timestamp
             );
         }
@@ -52,7 +54,7 @@ namespace IngameScript
                 return false;
 
             string[] parts = data.Split('|');
-            if (parts.Length < 15)
+            if (parts.Length < 18)
                 return false;
 
             try
@@ -79,7 +81,12 @@ namespace IngameScript
                     double.Parse(parts[12]),
                     double.Parse(parts[13])
                 );
-                message.Timestamp = double.Parse(parts[14]);
+                message.Left = new Vector3D(
+                    double.Parse(parts[14]),
+                    double.Parse(parts[15]),
+                    double.Parse(parts[16])
+                );
+                message.Timestamp = double.Parse(parts[17]);
                 return true;
             }
             catch

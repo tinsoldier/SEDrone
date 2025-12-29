@@ -105,13 +105,13 @@ namespace IngameScript
             double safeSpeed = ctx.Thrusters.GetSafeApproachSpeed(distance, toTarget);
             safeSpeed = Math.Min(safeSpeed, speedLimit);
 
-            Vector3D leaderVelocity = ctx.HasLeaderContact ? ctx.LastLeaderState.Velocity : Vector3D.Zero;
-
+            // Approach behavior is for precision positioning, NOT velocity matching
+            // Use Zero velocity as target so it focuses purely on reaching the position
             Vector3D desiredVelocity = _navigator.CalculateDesiredVelocity(
                 ctx.Position,
                 ctx.Velocity,
                 target,
-                leaderVelocity,
+                Vector3D.Zero,  // No velocity matching for Approach
                 safeSpeed
             );
 

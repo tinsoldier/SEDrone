@@ -1,4 +1,5 @@
 using System;
+using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
 namespace IngameScript
@@ -67,4 +68,50 @@ namespace IngameScript
     /// Maintain level orientation (no pitch/roll relative to gravity).
     /// </summary>
     public class StayLevel : IOrientationBehavior { }
+
+    /// <summary>
+    /// Align a specific connector on the drone to face a target direction.
+    /// Used for docking - orients the ship so the selected connector faces
+    /// opposite to the target connector's forward direction.
+    /// 
+    /// Inspired by SEAD2's AlignWithGravity which creates a virtual reference
+    /// frame based on the connector orientation.
+    /// </summary>
+    public class AlignConnector : IOrientationBehavior
+    {
+        /// <summary>The drone's connector to align.</summary>
+        public IMyShipConnector DroneConnector { get; private set; }
+
+        /// <summary>
+        /// Function returning the direction the drone connector should face (world space).
+        /// Typically the negation of the target connector's forward.
+        /// </summary>
+        public Func<Vector3D> TargetDirection { get; private set; }
+
+        /// <summary>
+        /// Optional: desired "up" direction for the connector alignment.
+        /// If null, uses gravity-aligned up.
+        /// </summary>
+        public Func<Vector3D> DesiredUp { get; private set; }
+
+        public AlignConnector(
+            IMyShipConnector droneConnector, 
+            Func<Vector3D> targetDirection,
+            Func<Vector3D> desiredUp = null)
+        {
+            DroneConnector = droneConnector;
+            TargetDirection = targetDirection;
+            DesiredUp = desiredUp;
+        }
+
+        public AlignConnector(
+            IMyShipConnector droneConnector,
+            Vector3D targetDirection,
+            Vector3D? desiredUp = null)
+        {
+            DroneConnector = droneConnector;
+            TargetDirection = () => targetDirection;
+            DesiredUp = desiredUp.HasValue ? (Func<Vector3D>)(() => desiredUp.Value) : null;
+        }
+    }
 }

@@ -101,6 +101,7 @@ namespace IngameScript
                 Velocity = velocity,
                 Forward = matrix.Forward,
                 Up = matrix.Up,
+                Left = matrix.Left,
                 Timestamp = _context.GameTime
             };
 
