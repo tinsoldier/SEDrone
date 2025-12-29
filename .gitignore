@@ -41,3 +41,8 @@ Desktop.ini
 
 # User-specific MDK settings (keep mdk.ini, ignore local overrides)
 mdk.local.ini
+
+# SEDrone specific ignores
+_unused_code/
+.claude/
+*.md
