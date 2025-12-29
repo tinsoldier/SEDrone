@@ -863,20 +863,6 @@ namespace IngameScript
         }
 
         /// <summary>
-        /// Returns the number of functional, enabled gyros available.
-        /// </summary>
-        private int GetActiveGyroCount()
-        {
-            int count = 0;
-            foreach (var gyro in _gyros)
-            {
-                if (gyro != null && !gyro.Closed && gyro.IsFunctional && gyro.Enabled)
-                    count++;
-            }
-            return count;
-        }
-
-        /// <summary>
         /// Releases gyro control, setting all overrides to zero.
         /// </summary>
         public void Release()
