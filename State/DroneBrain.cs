@@ -55,9 +55,9 @@ namespace IngameScript
         private DroneContext _droneContext;
         private TacticalContext _tacticalContext;
 
-        // === Executors ===
-        private PositionExecutor _positionExecutor;
-        private OrientationExecutor _orientationExecutor;
+        // === State tracking for behaviors ===
+        private IPositionBehavior _currentPositionBehavior;
+        private IOrientationBehavior _currentOrientationBehavior;
 
         // === Cached data for status display ===
         private double _lastDistanceToFormation;
@@ -124,10 +124,6 @@ namespace IngameScript
 
             // Initialize drone context (passed to directives)
             _droneContext = new DroneContext(this, _tacticalContext);
-
-            // Initialize executors
-            _positionExecutor = new PositionExecutor(Navigator, context.Echo);
-            _orientationExecutor = new OrientationExecutor(context.Echo);
 
             // Initialize WeaponCore APIs
             InitializeWeaponCore(context);
@@ -250,11 +246,20 @@ namespace IngameScript
                     newIntent = _directiveEnumerator.Current;
                 }
 
-                // Notify executors of behavior changes
+                // Track behavior changes (reset state if behavior type changed)
                 if (newIntent != null)
                 {
-                    _positionExecutor.OnBehaviorChanged(newIntent.Position);
-                    _orientationExecutor.OnBehaviorChanged(newIntent.Orientation);
+                    bool positionTypeChanged = !IsSameBehaviorType(_currentPositionBehavior, newIntent.Position);
+                    bool orientationTypeChanged = !IsSameBehaviorType(_currentOrientationBehavior, newIntent.Orientation);
+
+                    // For LevelFirstApproach, reset phase when behavior instance changes
+                    if (positionTypeChanged && newIntent.Position is LevelFirstApproach)
+                    {
+                        // Phase is reset in constructor of new instance
+                    }
+
+                    _currentPositionBehavior = newIntent.Position;
+                    _currentOrientationBehavior = newIntent.Orientation;
                 }
 
                 _currentIntent = newIntent;
@@ -263,12 +268,36 @@ namespace IngameScript
             // Execute current behaviors
             if (_currentIntent != null)
             {
-                // Position executor returns true if it also handled orientation (coupled behaviors)
-                bool orientationHandled = _positionExecutor.Execute(_currentIntent.Position, _droneContext);
-                
-                if (!orientationHandled)
+                // Execute position behavior
+                if (_currentIntent.Position != null)
                 {
-                    _orientationExecutor.Execute(_currentIntent.Orientation, _droneContext);
+                    _currentIntent.Position.Execute(_droneContext);
+                }
+                else
+                {
+                    Thrusters.Release();
+                }
+
+                // Execute orientation behavior (unless position behavior is coupled and handles both)
+                bool isCoupledBehavior = _currentIntent.Position is IOrientationBehavior;
+                if (!isCoupledBehavior)
+                {
+                    if (_currentIntent.Orientation != null)
+                    {
+                        _currentIntent.Orientation.Execute(_droneContext);
+                    }
+                    else
+                    {
+                        // Default: match leader or stay level
+                        if (HasLeaderContact)
+                        {
+                            Gyros.MatchCompassHeading(LastLeaderState.Forward, LastLeaderState.Up);
+                        }
+                        else
+                        {
+                            Gyros.OrientLevel();
+                        }
+                    }
                 }
 
                 // Update cached formation data for status
@@ -277,6 +306,12 @@ namespace IngameScript
                     _lastDistanceToFormation = _droneContext.DistanceToFormation();
                 }
             }
+        }
+
+        private bool IsSameBehaviorType(object a, object b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.GetType() == b.GetType();
         }
 
         /// <summary>
@@ -504,11 +539,12 @@ namespace IngameScript
         {
             string directiveName = _currentDirective?.Name ?? "None";
             string phase = "";
-            
+
             // Add approach phase info if relevant
-            if (_currentIntent?.Position is Approach)
+            var levelFirstApproach = _currentIntent?.Position as LevelFirstApproach;
+            if (levelFirstApproach != null)
             {
-                phase = $" ({_positionExecutor.CurrentPhase})";
+                phase = $" ({levelFirstApproach.CurrentPhase})";
             }
             else if (_currentIntent?.Position is FormationFollow)
             {
