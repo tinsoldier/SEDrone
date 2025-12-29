@@ -181,10 +181,150 @@ namespace IngameScript
                     Echo("Started.");
                     break;
 
+                case "DOCK":
+                    HandleDockCommand();
+                    break;
+
+                case "ESCORT":
+                    HandleEscortCommand();
+                    break;
+
                 default:
-                    Echo($"Unknown command: {argument}");
+                    // Check for leader commands (e.g., "DOCK_ALL", "ESCORT_ALL")
+                    if (HandleLeaderCommand(cmd))
+                    {
+                        // Command was handled
+                    }
+                    else
+                    {
+                        Echo($"Unknown command: {argument}");
+                        Echo("Available commands: RELOAD, STATUS, STOP, START, DOCK, ESCORT");
+                        if (_config.Role == GridRole.Leader)
+                        {
+                            Echo("Leader commands: DOCK_ALL, ESCORT_ALL, FORMUP_ALL");
+                        }
+                    }
                     break;
             }
+        }
+
+        private void HandleDockCommand()
+        {
+            if (_config.Role != GridRole.Drone)
+            {
+                Echo("ERROR: DOCK command only works for drones.");
+                return;
+            }
+
+            var droneBrain = _activeBrain as DroneBrain;
+            if (droneBrain == null)
+            {
+                Echo("ERROR: Drone brain not active.");
+                return;
+            }
+
+            // Switch to DockDirective
+            droneBrain.SetDirective(new DockDirective());
+            Echo("Switching to DOCK directive.");
+            Echo("Requesting docking pad from leader...");
+        }
+
+        private void HandleEscortCommand()
+        {
+            if (_config.Role != GridRole.Drone)
+            {
+                Echo("ERROR: ESCORT command only works for drones.");
+                return;
+            }
+
+            var droneBrain = _activeBrain as DroneBrain;
+            if (droneBrain == null)
+            {
+                Echo("ERROR: Drone brain not active.");
+                return;
+            }
+
+            // Switch back to EscortDirective
+            droneBrain.SetDirective(new EscortDirective());
+            Echo("Switching to ESCORT directive.");
+            Echo("Resuming formation flying...");
+        }
+
+        /// <summary>
+        /// Handles leader-specific commands that broadcast to drones.
+        /// </summary>
+        /// <returns>True if the command was recognized and handled</returns>
+        private bool HandleLeaderCommand(string cmd)
+        {
+            if (_config.Role != GridRole.Leader)
+            {
+                return false;
+            }
+
+            DroneCommand droneCommand = DroneCommand.None;
+            bool broadcast = false;
+
+            if (cmd == "DOCK_ALL")
+            {
+                droneCommand = DroneCommand.Dock;
+                broadcast = true;
+            }
+            else if (cmd == "ESCORT_ALL")
+            {
+                droneCommand = DroneCommand.Escort;
+                broadcast = true;
+            }
+            else if (cmd == "FORMUP_ALL")
+            {
+                droneCommand = DroneCommand.FormUp;
+                broadcast = true;
+            }
+            else if (cmd == "FOLLOWME_ALL")
+            {
+                droneCommand = DroneCommand.FollowMe;
+                broadcast = true;
+            }
+            else if (cmd == "SCATTER_ALL")
+            {
+                droneCommand = DroneCommand.Scatter;
+                broadcast = true;
+            }
+            else if (cmd == "ATTACK_ALL")
+            {
+                droneCommand = DroneCommand.Attack;
+                broadcast = true;
+            }
+            else
+            {
+                return false; // Command not recognized
+            }
+
+            if (broadcast)
+            {
+                BroadcastDroneCommand(droneCommand, 0); // 0 = broadcast to all
+                Echo($"Broadcasting {droneCommand} command to all drones...");
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Broadcasts a command message to drones via IGC.
+        /// </summary>
+        /// <param name="command">The command to send</param>
+        /// <param name="targetDroneId">Target drone entity ID (0 for broadcast)</param>
+        private void BroadcastDroneCommand(DroneCommand command, long targetDroneId)
+        {
+            var message = new DroneCommandMessage
+            {
+                TargetDroneId = targetDroneId,
+                Command = command,
+                Timestamp = _context.GameTime
+            };
+
+            string channel = _config.IGCChannel + "_COMMAND";
+            IGC.SendBroadcastMessage(channel, message.Serialize());
         }
 
         private void DisplayStatus()

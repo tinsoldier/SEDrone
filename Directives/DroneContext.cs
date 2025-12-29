@@ -7,7 +7,7 @@ namespace IngameScript
     /// <summary>
     /// Read-only context passed to directives.
     /// Provides access to drone state, leader tracking, and tactical information.
-    /// 
+    ///
     /// Directives should not modify hardware directly - they yield BehaviorIntents
     /// which are executed by the Brain through Executors.
     /// </summary>
@@ -25,6 +25,21 @@ namespace IngameScript
         /// The ship controller used as reference.
         /// </summary>
         public IMyShipController Reference => _brain.Context.Reference;
+
+        /// <summary>
+        /// Grid terminal system for block access.
+        /// </summary>
+        public IMyGridTerminalSystem GridTerminalSystem => _brain.Context.GridTerminalSystem;
+
+        /// <summary>
+        /// The programmable block running this code.
+        /// </summary>
+        public IMyProgrammableBlock Me => _brain.Context.Me;
+
+        /// <summary>
+        /// Current game time in seconds.
+        /// </summary>
+        public double GameTime => _brain.Context.GameTime;
 
         /// <summary>
         /// Current world position.
@@ -81,6 +96,16 @@ namespace IngameScript
         /// Formation navigator. Used by PositionExecutor.
         /// </summary>
         public FormationNavigator Navigator => _brain.Navigator;
+
+        /// <summary>
+        /// Docking navigator. Used by DockDirective.
+        /// </summary>
+        public DockingNavigator DockingNav => _brain.DockingNav;
+
+        /// <summary>
+        /// IGC request manager for request-response patterns.
+        /// </summary>
+        public IGCRequestManager IGCRequests => _brain.IGCRequests;
 
         /// <summary>
         /// Creates a new DroneContext.

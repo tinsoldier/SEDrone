@@ -19,8 +19,8 @@
     <PackageReference Include="Mal.Mdk2.References" Version="2.2.6" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Remove="_archive_modes\**" />
-    <None Remove="_archive_modes\**" />
+    <Compile Remove="_unused_code\**" />
+    <None Remove="_unused_code\**" />
   </ItemGroup>
   <ItemGroup>
     <None Remove="Instructions.readme" />

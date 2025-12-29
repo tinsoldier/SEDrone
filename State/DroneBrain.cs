@@ -22,22 +22,25 @@ namespace IngameScript
     public class DroneBrain : IBrain
     {
         // === IBrain implementation ===
-        public string Name => "Drone";
-        public string Status { get; private set; } = "Initializing";
+        public string Name { get { return "Drone"; } }
+        public string Status { get; private set; }
 
         // === Context exposed to directives and executors ===
         public BrainContext Context { get; private set; }
         public GyroController Gyros { get; private set; }
         public ThrusterController Thrusters { get; private set; }
         public FormationNavigator Navigator { get; private set; }
-        public Action<string> Echo => Context?.Echo;
-        public DroneConfig Config => Context.Config;
+        public DockingNavigator DockingNav { get; private set; }
+        public IGCRequestManager IGCRequests { get; private set; }
+        public Action<string> Echo { get { return Context != null ? Context.Echo : null; } }
+        public DroneConfig Config { get { return Context.Config; } }
 
         // === Leader tracking ===
         public LeaderStateMessage LastLeaderState { get; private set; }
         public bool HasLeaderContact { get; private set; }
         
         private IMyBroadcastListener _listener;
+        private IMyBroadcastListener _commandListener;
         private double _lastContactTime;
         private const double CONTACT_TIMEOUT = 2.0;
 
@@ -65,9 +68,14 @@ namespace IngameScript
         private bool _hasPositionTracking;
         private List<Vector3D> _projectilePositions = new List<Vector3D>();
         private List<Vector3D> _tempPositions = new List<Vector3D>();
-        
+
         public int ProjectileCount { get; private set; }
-        public bool HasPositionTracking => _hasPositionTracking;
+        public bool HasPositionTracking { get { return _hasPositionTracking; } }
+
+        public DroneBrain()
+        {
+            Status = "Initializing";
+        }
 
         public void Initialize(BrainContext context)
         {
@@ -75,6 +83,7 @@ namespace IngameScript
 
             // Register for IGC broadcasts
             _listener = context.IGC.RegisterBroadcastListener(context.Config.IGCChannel);
+            _commandListener = context.IGC.RegisterBroadcastListener(context.Config.IGCChannel + "_COMMAND");
 
             // Initialize gyro controller
             var gyros = new List<IMyGyro>();
@@ -98,6 +107,17 @@ namespace IngameScript
 
             // Initialize formation navigator
             Navigator = new FormationNavigator(context.Config);
+
+            // Initialize docking navigator
+            DockingNav = new DockingNavigator(Navigator, context.Config);
+
+            // Initialize IGC request manager
+            IGCRequests = new IGCRequestManager(
+                context.IGC,
+                context.Me,
+                context.Config.IGCChannel,
+                context.Echo
+            );
 
             // Initialize tactical context
             _tacticalContext = new TacticalContext();
@@ -361,6 +381,7 @@ namespace IngameScript
 
         private void ProcessMessages()
         {
+            // Process leader state messages
             while (_listener.HasPendingMessage)
             {
                 var msg = _listener.AcceptMessage();
@@ -375,6 +396,93 @@ namespace IngameScript
                         _lastContactTime = Context.GameTime;
                     }
                 }
+            }
+
+            // Process command messages from leader
+            ProcessCommandMessages();
+
+            // Process IGC request/response messages
+            if (IGCRequests != null)
+            {
+                IGCRequests.ProcessMessages(Context.GameTime);
+            }
+        }
+
+        /// <summary>
+        /// Processes command messages from the leader.
+        /// </summary>
+        private void ProcessCommandMessages()
+        {
+            while (_commandListener.HasPendingMessage)
+            {
+                var msg = _commandListener.AcceptMessage();
+                var data = msg.Data as string;
+                if (data != null)
+                {
+                    DroneCommandMessage command;
+                    if (DroneCommandMessage.TryParse(data, out command))
+                    {
+                        // Check if command is for us (or broadcast to all)
+                        long myEntityId = Context.Me.CubeGrid.EntityId;
+                        if (command.TargetDroneId == 0 || command.TargetDroneId == myEntityId)
+                        {
+                            ExecuteCommand(command.Command);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Executes a received command by switching directives.
+        /// </summary>
+        private void ExecuteCommand(DroneCommand command)
+        {
+            switch (command)
+            {
+                case DroneCommand.Dock:
+                    SetDirective(new DockDirective());
+                    Echo?.Invoke("[Drone] Received DOCK command from leader");
+                    break;
+
+                case DroneCommand.Escort:
+                    SetDirective(new EscortDirective());
+                    Echo?.Invoke("[Drone] Received ESCORT command from leader");
+                    break;
+
+                case DroneCommand.FormUp:
+                    SetDirective(new EscortDirective());
+                    Echo?.Invoke("[Drone] Received FORMUP command from leader");
+                    break;
+
+                case DroneCommand.HoldPosition:
+                    // TODO: Implement HoldPositionDirective
+                    Echo?.Invoke("[Drone] HoldPosition not yet implemented");
+                    break;
+
+                case DroneCommand.ReturnToBase:
+                    // TODO: Implement RTB directive
+                    Echo?.Invoke("[Drone] ReturnToBase not yet implemented");
+                    break;
+
+                case DroneCommand.FollowMe:
+                    SetDirective(new EscortDirective());
+                    Echo?.Invoke("[Drone] Received FOLLOWME command from leader");
+                    break;
+
+                case DroneCommand.Scatter:
+                    // TODO: Implement scatter behavior
+                    Echo?.Invoke("[Drone] Scatter not yet implemented");
+                    break;
+
+                case DroneCommand.Attack:
+                    // TODO: Implement attack directive (if needed, WC handles targeting)
+                    Echo?.Invoke("[Drone] Attack command received (WeaponCore auto-targeting active)");
+                    break;
+
+                default:
+                    Echo?.Invoke($"[Drone] Unknown command: {command}");
+                    break;
             }
         }
 

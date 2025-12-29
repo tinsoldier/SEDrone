@@ -91,16 +91,61 @@ namespace IngameScript
 
     /// <summary>
     /// Command messages that can be sent from leader to drones.
-    /// For future use - formation commands, RTB, attack, etc.
     /// </summary>
-    public enum FormationCommand
+    public enum DroneCommand
     {
         None,
+        Dock,           // Initiate docking sequence
+        Escort,         // Return to escort/formation mode
         FormUp,         // Return to formation positions
         HoldPosition,   // Stop and hover
         ReturnToBase,   // RTB command
         FollowMe,       // Resume following
         Scatter,        // Break formation, evade
         Attack          // Engage targets (WeaponCore handles targeting)
+    }
+
+    /// <summary>
+    /// Command message sent from leader to specific drone or all drones.
+    /// </summary>
+    public struct DroneCommandMessage
+    {
+        public long TargetDroneId;      // 0 = broadcast to all drones
+        public DroneCommand Command;
+        public double Timestamp;
+
+        public string Serialize()
+        {
+            return string.Join("|",
+                "DRONE_COMMAND",
+                TargetDroneId,
+                (int)Command,
+                Timestamp
+            );
+        }
+
+        public static bool TryParse(string data, out DroneCommandMessage message)
+        {
+            message = new DroneCommandMessage();
+
+            if (string.IsNullOrEmpty(data))
+                return false;
+
+            string[] parts = data.Split('|');
+            if (parts.Length < 4 || parts[0] != "DRONE_COMMAND")
+                return false;
+
+            try
+            {
+                message.TargetDroneId = long.Parse(parts[1]);
+                message.Command = (DroneCommand)int.Parse(parts[2]);
+                message.Timestamp = double.Parse(parts[3]);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

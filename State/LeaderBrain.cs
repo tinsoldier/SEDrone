@@ -7,24 +7,45 @@ namespace IngameScript
     /// Brain for the leader/commander grid.
     /// Responsibilities:
     /// - Broadcast position over IGC for drones to follow
+    /// - Manage docking pad assignments for requesting drones
     /// - (Future) Issue formation commands
     /// - (Future) Coordinate drone behavior
     /// </summary>
     public class LeaderBrain : IBrain
     {
-        public string Name => "Leader";
-        public string Status => _status;
+        public string Name { get { return "Leader"; } }
+        public string Status { get { return _status; } }
 
         private string _status = "Initializing";
         private BrainContext _context;
-        private IMyBroadcastListener _listener;
+        private IMyBroadcastListener _dockingRequestListener;
+        private IMyBroadcastListener _commandListener; // For future use
         private double _lastBroadcastTime;
+        private double _lastCleanupTime;
         private const double BROADCAST_INTERVAL = 0.1;  // 10 Hz broadcast rate
+        private const double CLEANUP_INTERVAL = 5.0;    // Cleanup every 5 seconds
+
+        // Docking pad management
+        private DockingPadManager _dockingPadManager;
 
         public void Initialize(BrainContext context)
         {
             _context = context;
+
+            // Register listener for docking requests
+            string dockingChannel = context.Config.IGCChannel + "_DOCK_REQUEST";
+            _dockingRequestListener = context.IGC.RegisterBroadcastListener(dockingChannel);
+
+            // Initialize docking pad manager
+            _dockingPadManager = new DockingPadManager(
+                context.GridTerminalSystem,
+                context.Me,
+                context.Reference,
+                context.Echo
+            );
+
             _status = "Initialized";
+            context.Echo?.Invoke($"[{Name}] Listening for docking requests on: {dockingChannel}");
         }
 
         public IEnumerator<bool> Run()
@@ -43,7 +64,20 @@ namespace IngameScript
                     _lastBroadcastTime = _context.GameTime;
                 }
 
-                _status = $"Broadcasting @ {_context.GameTime:F1}s";
+                // Process docking requests
+                ProcessDockingRequests();
+
+                // Cleanup stale assignments periodically
+                if (_context.GameTime - _lastCleanupTime >= CLEANUP_INTERVAL)
+                {
+                    _dockingPadManager.CleanupStaleAssignments(_context.GameTime);
+                    _lastCleanupTime = _context.GameTime;
+                }
+
+                _status = string.Format("Broadcasting | Pads: {0}/{1}",
+                    _dockingPadManager.AssignedPadCount,
+                    _dockingPadManager.AssignedPadCount + _dockingPadManager.AvailablePadCount);
+
                 yield return true;  // Continue next tick
             }
         }
@@ -72,6 +106,29 @@ namespace IngameScript
 
             // Broadcast to all listeners on the channel
             _context.IGC.SendBroadcastMessage(_context.Config.IGCChannel, message.Serialize());
+        }
+
+        private void ProcessDockingRequests()
+        {
+            // Process all pending docking requests
+            while (_dockingRequestListener.HasPendingMessage)
+            {
+                var msg = _dockingRequestListener.AcceptMessage();
+                var data = msg.Data as string;
+                if (data != null)
+                {
+                    DockingPadRequest request;
+                    if (DockingPadRequest.TryParse(data, out request))
+                    {
+                        // Process the request
+                        DockingPadResponse response = _dockingPadManager.ProcessRequest(request, _context.GameTime);
+
+                        // Send response back on response channel
+                        string responseChannel = _context.Config.IGCChannel + "_DOCK_RESPONSE";
+                        _context.IGC.SendBroadcastMessage(responseChannel, response.Serialize());
+                    }
+                }
+            }
         }
 
         public void Shutdown()
