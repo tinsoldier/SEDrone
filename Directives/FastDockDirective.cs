@@ -202,7 +202,8 @@ namespace IngameScript
                     // Not aligned enough - hold formation position while orienting
                     yield return new BehaviorIntent
                     {
-                        Position = new Approach(() => ctx.GetFormationPosition()),
+                        Position = new Approach(() => ctx.GetFormationPosition(),
+                            matchLeaderVelocity: true),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };
@@ -216,7 +217,9 @@ namespace IngameScript
                     yield return new BehaviorIntent
                     {
                         Position = new Approach(() => helpers.GetWaypointAtDistance(droneConnectorSize + targetConnectorSize),
-                            speedLimit: ctx.Config.DockingFinalSpeed),
+                            speedLimit: ctx.Config.DockingFinalSpeed,
+                            matchLeaderVelocity: true,
+                            bypassPrecisionRadius: true),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };
@@ -236,7 +239,8 @@ namespace IngameScript
                             // Simply go to holding position, don't try to calculate fancy reposition
                             return helpers.GetWaypointAtDistance(heightNeeded);
                         },
-                        speedLimit: ctx.Config.DockingApproachSpeed),
+                        speedLimit: ctx.Config.DockingApproachSpeed,
+                        matchLeaderVelocity: true),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };
@@ -247,7 +251,8 @@ namespace IngameScript
                     yield return new BehaviorIntent
                     {
                         Position = new Approach(() => helpers.GetWaypointAtDistance(heightNeeded),
-                            speedLimit: ctx.Config.DockingApproachSpeed),
+                            speedLimit: ctx.Config.DockingApproachSpeed,
+                            matchLeaderVelocity: true),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };
@@ -258,7 +263,9 @@ namespace IngameScript
                     yield return new BehaviorIntent
                     {
                         Position = new Approach(() => helpers.GetWaypointAtDistance(droneConnectorSize + targetConnectorSize),
-                            speedLimit: ctx.Config.DockingFinalSpeed),
+                            speedLimit: ctx.Config.DockingFinalSpeed,
+                            matchLeaderVelocity: true,
+                            bypassPrecisionRadius: true),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };

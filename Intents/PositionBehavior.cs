@@ -26,19 +26,25 @@ namespace IngameScript
         /// <summary>Target position (evaluated each tick if dynamic).</summary>
         public Vector3D Target => _targetFunc();
         public double SpeedLimit { get; }
+        public bool MatchLeaderVelocity { get; }
+        public bool BypassPrecisionRadius { get; }
 
         /// <summary>Approach a fixed position.</summary>
-        public Approach(Vector3D target, double speedLimit = -1)
+        public Approach(Vector3D target, double speedLimit = -1, bool matchLeaderVelocity = false, bool bypassPrecisionRadius = false)
         {
             _targetFunc = () => target;
             SpeedLimit = speedLimit;
+            MatchLeaderVelocity = matchLeaderVelocity;
+            BypassPrecisionRadius = bypassPrecisionRadius;
         }
 
         /// <summary>Approach a dynamically-computed position (evaluated each tick).</summary>
-        public Approach(Func<Vector3D> targetFunc, double speedLimit = -1)
+        public Approach(Func<Vector3D> targetFunc, double speedLimit = -1, bool matchLeaderVelocity = false, bool bypassPrecisionRadius = false)
         {
             _targetFunc = targetFunc;
             SpeedLimit = speedLimit;
+            MatchLeaderVelocity = matchLeaderVelocity;
+            BypassPrecisionRadius = bypassPrecisionRadius;
         }
     }
 

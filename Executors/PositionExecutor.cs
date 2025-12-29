@@ -105,21 +105,34 @@ namespace IngameScript
             double safeSpeed = ctx.Thrusters.GetSafeApproachSpeed(distance, toTarget);
             safeSpeed = Math.Min(safeSpeed, speedLimit);
 
-            // Approach behavior is for precision positioning, NOT velocity matching
-            // Use Zero velocity as target so it focuses purely on reaching the position
+            // Determine whether to match leader velocity
+            Vector3D targetVelocity = Vector3D.Zero;
+            if (behavior.MatchLeaderVelocity && ctx.HasLeaderContact)
+            {
+                targetVelocity = ctx.LastLeaderState.Velocity;
+            }
+
             Vector3D desiredVelocity = _navigator.CalculateDesiredVelocity(
                 ctx.Position,
                 ctx.Velocity,
                 target,
-                Vector3D.Zero,  // No velocity matching for Approach
+                targetVelocity,
                 safeSpeed
             );
 
-            // Approach is decoupled - only control thrusters, not gyros
-            // Pass safeSpeed (which includes speedLimit) to ensure speed is properly capped
-            // For Approach behavior with explicit speedLimit, use minimal precision radius
-            // to avoid premature slowdown during docking
-            double precisionRadius = behavior.SpeedLimit > 0 ? 0.5 : ctx.Config.PrecisionRadius;
+            // Determine precision radius
+            // If BypassPrecisionRadius is set, use minimal radius (0.1m) to avoid slowdown
+            // Otherwise, use minimal radius (0.5m) if speedLimit is set, or config default
+            double precisionRadius = ctx.Config.PrecisionRadius;
+            if (behavior.BypassPrecisionRadius)
+            {
+                precisionRadius = 0.1;
+            }
+            else if (behavior.SpeedLimit > 0)
+            {
+                precisionRadius = 0.5;
+            }
+
             ctx.Thrusters.MoveToward(target, desiredVelocity, safeSpeed, precisionRadius);
         }
 
