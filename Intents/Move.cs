@@ -234,6 +234,7 @@ namespace IngameScript
             if (!IsValid(correction))
             {
                 ctx.Thrusters.Release();
+                _pid.Reset();
                 return;
             }
 
