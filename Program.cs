@@ -119,7 +119,7 @@ namespace IngameScript
             }
 
             // Status display
-            DisplayStatus();
+            //DisplayStatus();
         }
 
         private void SelectBrain()

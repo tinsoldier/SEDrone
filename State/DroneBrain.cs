@@ -38,7 +38,7 @@ namespace IngameScript
         // === Leader tracking ===
         public LeaderStateMessage LastLeaderState { get; private set; }
         public bool HasLeaderContact { get; private set; }
-        
+
         private IMyBroadcastListener _listener;
         private IMyBroadcastListener _commandListener;
         private double _lastContactTime;
@@ -138,7 +138,7 @@ namespace IngameScript
         {
             _hasPositionTracking = false;
             _wcBridge = new WcPbApiBridgeClient();
-            
+
             try
             {
                 if (_wcBridge.Activate(context.Me))
@@ -151,7 +151,7 @@ namespace IngameScript
             {
                 // Bridge activation failed
             }
-            
+
             if (!_hasPositionTracking)
             {
                 _wcApi = new Program.WcPbApi();
@@ -189,26 +189,39 @@ namespace IngameScript
             _currentDirective = directive;
             _directiveEnumerator = directive.Execute(_droneContext).GetEnumerator();
             _currentIntent = null;  // Force advancement on next update
-            
+
             Echo?.Invoke($"[Drone] Directive: {directive.Name}");
         }
 
         public IEnumerator<bool> Run()
         {
+            Exception caughtException = null;
             while (true)
             {
-                // === Brain responsibilities (every tick) ===
-                ProcessMessages();
-                CheckLeaderTimeout();
-                UpdateControllers();
-                UpdateTacticalContext();
+                try
+                {
+                    // === Brain responsibilities (every tick) ===
+                    ProcessMessages();
+                    CheckLeaderTimeout();
+                    UpdateControllers();
+                    UpdateTacticalContext();
 
-                // === Run directive ===
-                RunDirective();
+                    // === Run directive ===
+                    RunDirective();
 
-                UpdateStatus();
+                    UpdateStatus();
+                }
+                catch (Exception ex)
+                {
+                    Status = "Error: " + ex.Message;
+                    Echo?.Invoke("[Drone] Exception in Run(): " + ex.ToString());
+                    caughtException = ex;
+                    break;
+                }
                 yield return true;
             }
+            // If an exception was caught, exit the enumerator
+            yield break;
         }
 
         /// <summary>
@@ -237,8 +250,8 @@ namespace IngameScript
                 // Handle terminal states
                 if (newIntent != null && (newIntent.IsComplete || newIntent.IsAborted))
                 {
-                    string reason = newIntent.IsAborted && newIntent.Abort != null 
-                        ? newIntent.Abort.Reason.ToString() 
+                    string reason = newIntent.IsAborted && newIntent.Abort != null
+                        ? newIntent.Abort.Reason.ToString()
                         : "Complete";
                     Echo?.Invoke($"[Drone] Directive ended: {reason}");
                     SetDirective(new EscortDirective());
@@ -321,10 +334,10 @@ namespace IngameScript
         {
             ProjectileCount = 0;
             _projectilePositions.Clear();
-            
+
             long droneEntityId = Context.Me.CubeGrid.EntityId;
             long leaderEntityId = HasLeaderContact ? LastLeaderState.EntityId : 0;
-            
+
             if (_hasPositionTracking && _wcBridge != null && _wcBridge.IsReady && _wcBridge.IsWcApiReady)
             {
                 CheckThreatsWithPositions(droneEntityId, leaderEntityId);
@@ -349,7 +362,7 @@ namespace IngameScript
             {
                 _projectilePositions.AddRange(_tempPositions);
             }
-            
+
             if (leaderEntityId != 0)
             {
                 _tempPositions.Clear();
@@ -374,20 +387,20 @@ namespace IngameScript
                     }
                 }
             }
-            
+
             ProjectileCount = _projectilePositions.Count;
         }
 
         private void CheckThreatsCountOnly(long droneEntityId, long leaderEntityId)
         {
             int totalCount = 0;
-            
+
             var droneResult = _wcApi.GetProjectilesLockedOn(droneEntityId);
             if (droneResult.Item1)
             {
                 totalCount += droneResult.Item2;
             }
-            
+
             if (leaderEntityId != 0)
             {
                 var leaderResult = _wcApi.GetProjectilesLockedOn(leaderEntityId);
@@ -396,7 +409,7 @@ namespace IngameScript
                     totalCount += leaderResult.Item2;
                 }
             }
-            
+
             ProjectileCount = totalCount;
         }
 
@@ -550,7 +563,7 @@ namespace IngameScript
             {
                 phase = " (Formation)";
             }
-            
+
             if (!HasLeaderContact)
             {
                 Status = $"{directiveName}{phase} | No leader";

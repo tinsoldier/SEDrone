@@ -27,7 +27,6 @@ namespace IngameScript
 
         // === PID Control ===
         private readonly PIDController3D _pid;
-        private readonly bool _usePID;
 
         // === Speed Limiting ===
         private readonly double _maxSpeed;
@@ -73,7 +72,6 @@ namespace IngameScript
         {
             _targetFunc = worldPositionFunc;
             _isRelative = false;
-            _usePID = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
         }
@@ -92,7 +90,6 @@ namespace IngameScript
             _targetFunc = worldPositionFunc;
             _targetVelocityFunc = targetVelocityFunc;
             _isRelative = false;
-            _usePID = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
         }
@@ -111,7 +108,6 @@ namespace IngameScript
             _targetFunc = () => localOffset;
             _referenceFunc = referenceFunc;
             _isRelative = true;
-            _usePID = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
         }
@@ -128,7 +124,6 @@ namespace IngameScript
             _referenceFunc = referenceFunc;
             _targetVelocityFunc = targetVelocityFunc;
             _isRelative = true;
-            _usePID = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
         }
@@ -150,7 +145,6 @@ namespace IngameScript
             _targetFunc = () => localOffset;
             _orientedRefFunc = orientedRefFunc;
             _isFormation = true;
-            _usePID = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
         }
@@ -165,7 +159,6 @@ namespace IngameScript
             _targetFunc = localOffsetFunc;
             _orientedRefFunc = orientedRefFunc;
             _isFormation = true;
-            _usePID = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
         }
@@ -210,19 +203,39 @@ namespace IngameScript
             // Calculate position error
             Vector3D positionError = worldTarget - ctx.Position;
 
+            // Safety check for invalid values
+            if (!IsValid(worldTarget) || !IsValid(ctx.Position) || !IsValid(targetVelocity))
+            {
+                ctx.Thrusters.Release();
+                return;
+            }
+
             // Adjust for braking distance to prevent overshoot
             Vector3D currentVelocity = ctx.Velocity;
             double currentSpeed = currentVelocity.Length();
 
-            if (currentSpeed > 0.1)
+            if (currentSpeed > 0.1 && IsValid(currentVelocity))
             {
                 double brakingDistance = ctx.Thrusters.GetBrakingDistance(currentSpeed, currentVelocity);
-                Vector3D brakingVector = Vector3D.Normalize(currentVelocity) * brakingDistance * ctx.Config.BrakingSafetyMargin;
-                positionError -= brakingVector;
+                if (!double.IsNaN(brakingDistance) && !double.IsInfinity(brakingDistance) && brakingDistance > 0)
+                {
+                    Vector3D brakingVector = Vector3D.Normalize(currentVelocity) * brakingDistance * ctx.Config.BrakingSafetyMargin;
+                    if (IsValid(brakingVector))
+                    {
+                        positionError -= brakingVector;
+                    }
+                }
             }
 
             // PID correction based on position error
             Vector3D correction = _pid.Compute(positionError, ctx.DeltaTime);
+
+            // Safety check on PID output
+            if (!IsValid(correction))
+            {
+                ctx.Thrusters.Release();
+                return;
+            }
 
             // Calculate desired velocity
             // Desired velocity = target velocity + correction
@@ -232,14 +245,31 @@ namespace IngameScript
             if (_maxSpeed > 0)
             {
                 double speed = desiredVelocity.Length();
-                if (speed > _maxSpeed)
+                if (speed > _maxSpeed && speed > 0)
                 {
                     desiredVelocity = (desiredVelocity / speed) * _maxSpeed;
                 }
             }
 
+            // Final safety check before commanding thrusters
+            if (!IsValid(desiredVelocity))
+            {
+                ctx.Thrusters.Release();
+                return;
+            }
+
             // Command thrusters - controller handles force calculation and transforms
             ctx.Thrusters.SetDesiredVelocity(desiredVelocity);
+        }
+
+        /// <summary>
+        /// Checks if a vector contains valid (non-NaN, non-infinite) values.
+        /// </summary>
+        private static bool IsValid(Vector3D v)
+        {
+            return !double.IsNaN(v.X) && !double.IsInfinity(v.X) &&
+                   !double.IsNaN(v.Y) && !double.IsInfinity(v.Y) &&
+                   !double.IsNaN(v.Z) && !double.IsInfinity(v.Z);
         }
     }
 }
