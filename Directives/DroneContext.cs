@@ -42,6 +42,11 @@ namespace IngameScript
         public double GameTime => _brain.Context.GameTime;
 
         /// <summary>
+        /// Time since last update in seconds.
+        /// </summary>
+        public double DeltaTime => _brain.Context.DeltaTime;
+
+        /// <summary>
         /// Current world position.
         /// </summary>
         public Vector3D Position => Reference.GetPosition();

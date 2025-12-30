@@ -388,6 +388,42 @@ namespace IngameScript
         }
 
         /// <summary>
+        /// Sets the desired velocity in world space.
+        /// Controller calculates the force needed to achieve this velocity and applies it.
+        /// This is the preferred method for behaviors - simpler than ApplyForce.
+        /// </summary>
+        /// <param name="worldVelocity">Desired velocity in world-space coordinates</param>
+        public void SetDesiredVelocity(Vector3D worldVelocity)
+        {
+            if (_reference == null)
+                return;
+
+            // Ensure dampeners are on
+            if (!_reference.DampenersOverride)
+            {
+                _reference.DampenersOverride = true;
+            }
+
+            // Get current velocity in world space
+            Vector3D currentVelocity = _reference.GetShipVelocities().LinearVelocity;
+
+            // Calculate velocity error in world space
+            Vector3D velocityError = worldVelocity - currentVelocity;
+
+            // Convert to force: F = m * (dv/dt)
+            Vector3D worldForce = velocityError * _shipMass / _deltaTime;
+
+            // Transform to ship-local coordinates
+            Vector3D localForce = WorldToShipDirection(worldForce);
+
+            // Apply axis authority
+            localForce = _config.ApplyAuthority(localForce);
+
+            // Apply force (handles gravity compensation internally)
+            ApplyForce(localForce);
+        }
+
+        /// <summary>
         /// Applies a force vector in ship-local space.
         /// </summary>
         /// <param name="localForce">Force in Newtons, ship-local coordinates</param>

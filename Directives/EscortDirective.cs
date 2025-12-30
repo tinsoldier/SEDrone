@@ -61,7 +61,7 @@ namespace IngameScript
                             // Use coupled behavior - handles both position and orientation
                             yield return new BehaviorIntent
                             {
-                                Position = new LevelFirstApproach(() => ctx.GetFormationPosition()),
+                                Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
                                 Orientation = null,  // Coupled behavior handles orientation
                                 ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
                             };
@@ -71,7 +71,7 @@ namespace IngameScript
                             // Normal approach - dynamic target via Func<>
                             yield return new BehaviorIntent
                             {
-                                Position = new Approach(() => ctx.GetFormationPosition()),
+                                Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
                                 Orientation = GetApproachOrientation(ctx),
                                 ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
                             };
@@ -82,7 +82,8 @@ namespace IngameScript
                         // In formation - yield FormationFollow intent
                         yield return new BehaviorIntent
                         {
-                            Position = new FormationFollow(ctx.Config.StationOffset),
+                            //Position = new FormationFollow(ctx.Config.StationOffset),
+                            Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
                             Orientation = GetFormationOrientation(ctx),
                             ExitWhen = () => ctx.HasExitedFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
                         };

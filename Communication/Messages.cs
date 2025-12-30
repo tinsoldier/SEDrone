@@ -5,18 +5,21 @@ namespace IngameScript
     /// <summary>
     /// Message broadcast by the leader containing its current state.
     /// Drones use this to track and follow the leader.
+    /// Implements IOrientedReference for use in formation behaviors.
     /// </summary>
-    public struct LeaderStateMessage
+    public struct LeaderStateMessage : IOrientedReference
     {
         // === Identity ===
         public long EntityId;           // Leader's grid entity ID
         public string GridName;         // Leader's grid name (for display/debug)
 
-        // === Position & Motion ===
-        public Vector3D Position;       // World position
-        public Vector3D Velocity;       // World velocity
-        public Vector3D Forward;        // Forward direction vector
-        public Vector3D Up;             // Up direction vector
+        // === Position & Motion (IOrientedReference properties) ===
+        public Vector3D Position { get; set; }       // World position
+        public Vector3D Velocity { get; set; }       // World velocity
+        public Vector3D Forward { get; set; }        // Forward direction vector
+        public Vector3D Up { get; set; }             // Up direction vector
+
+        // === Additional orientation data ===
         public Vector3D Left;           // Left direction vector (needed for SEAD2-compatible transforms)
 
         // === Timestamp ===
