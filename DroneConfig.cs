@@ -268,17 +268,24 @@ PredictionTime=0.5
     /// </summary>
     public struct PIDGains
     {
-        public double Kp;           // Proportional gain
-        public double Ki;           // Integral gain
-        public double Kd;           // Derivative gain
-        public double IntegralLimit; // Anti-windup clamp
+        public double Kp;             // Proportional gain
+        public double Ki;             // Integral gain
+        public double Kd;             // Derivative gain
+        public double IntegralLimit;  // Anti-windup clamp (max integral accumulation)
+        public double Deadband;       // Error below which integral stops accumulating
+        public double IntegralDecay;  // Decay factor per tick (0.995 = 0.5% decay)
 
-        public PIDGains(double kp, double ki, double kd, double integralLimit = 100)
+        public PIDGains(double kp, double ki, double kd, 
+                        double integralLimit = 10.0, 
+                        double deadband = 0.3, 
+                        double integralDecay = 0.995)
         {
             Kp = kp;
             Ki = ki;
             Kd = kd;
             IntegralLimit = integralLimit;
+            Deadband = deadband;
+            IntegralDecay = integralDecay;
         }
     }
 }

@@ -27,6 +27,8 @@ namespace IngameScript
         private readonly double _derivativeGain;
         private readonly double _integralUpperLimit;
         private readonly double _integralLowerLimit;
+        private readonly double _deadband;
+        private readonly double _integralDecay;
 
         private double _integral;
         private double _previousError;
@@ -39,18 +41,24 @@ namespace IngameScript
         /// <param name="derivativeGain">Derivative gain (Kd)</param>
         /// <param name="integralUpperLimit">Optional upper limit for the integral term (0 means no limit)</param>
         /// <param name="integralLowerLimit">Optional lower limit for the integral term (0 means no limit)</param>
+        /// <param name="deadband">Error magnitude below which integral stops accumulating (prevents drift)</param>
+        /// <param name="integralDecay">Decay factor applied to integral each tick (0.99 = 1% decay, 1.0 = no decay)</param>
         public PIDController(
             double proportionalGain,
             double integralGain,
             double derivativeGain,
             double integralUpperLimit = 0,
-            double integralLowerLimit = 0)
+            double integralLowerLimit = 0,
+            double deadband = 0,
+            double integralDecay = 1.0)
         {
             _proportionalGain = proportionalGain;
             _integralGain = integralGain;
             _derivativeGain = derivativeGain;
             _integralUpperLimit = integralUpperLimit;
             _integralLowerLimit = integralLowerLimit;
+            _deadband = deadband;
+            _integralDecay = integralDecay;
             _integral = 0;
             _previousError = 0;
         }
@@ -63,8 +71,22 @@ namespace IngameScript
         /// <returns>The computed PID output.</returns>
         public double Compute(double error, double deltaTime)
         {
-            // Update integral with actual elapsed time
-            _integral += error * deltaTime;
+            // Apply integral decay to prevent long-term accumulation
+            if (_integralDecay < 1.0)
+                _integral *= _integralDecay;
+
+            // Deadband: if error is small enough, decay integral and treat as zero
+            // This prevents drift during station-keeping
+            if (_deadband > 0 && Math.Abs(error) < _deadband)
+            {
+                _integral *= 0.95; // Faster decay in deadband
+                // Don't accumulate, but still compute P and D for fine control
+            }
+            else
+            {
+                // Update integral with actual elapsed time
+                _integral += error * deltaTime;
+            }
 
             // Apply integral limits if set (non-zero means limit is active)
             if (_integralUpperLimit != 0)
@@ -111,9 +133,9 @@ namespace IngameScript
         /// <param name="gains">PID gains to apply to all three axes</param>
         public PIDController3D(PIDGains gains)
         {
-            _x = new PIDController(gains.Kp, gains.Ki, gains.Kd, gains.IntegralLimit, -gains.IntegralLimit);
-            _y = new PIDController(gains.Kp, gains.Ki, gains.Kd, gains.IntegralLimit, -gains.IntegralLimit);
-            _z = new PIDController(gains.Kp, gains.Ki, gains.Kd, gains.IntegralLimit, -gains.IntegralLimit);
+            _x = new PIDController(gains.Kp, gains.Ki, gains.Kd, gains.IntegralLimit, -gains.IntegralLimit, gains.Deadband, gains.IntegralDecay);
+            _y = new PIDController(gains.Kp, gains.Ki, gains.Kd, gains.IntegralLimit, -gains.IntegralLimit, gains.Deadband, gains.IntegralDecay);
+            _z = new PIDController(gains.Kp, gains.Ki, gains.Kd, gains.IntegralLimit, -gains.IntegralLimit, gains.Deadband, gains.IntegralDecay);
         }
 
         /// <summary>
@@ -121,19 +143,28 @@ namespace IngameScript
         /// </summary>
         public PIDController3D(PIDGains xGains, PIDGains yGains, PIDGains zGains)
         {
-            _x = new PIDController(xGains.Kp, xGains.Ki, xGains.Kd, xGains.IntegralLimit, -xGains.IntegralLimit);
-            _y = new PIDController(yGains.Kp, yGains.Ki, yGains.Kd, yGains.IntegralLimit, -yGains.IntegralLimit);
-            _z = new PIDController(zGains.Kp, zGains.Ki, zGains.Kd, zGains.IntegralLimit, -zGains.IntegralLimit);
+            _x = new PIDController(xGains.Kp, xGains.Ki, xGains.Kd, xGains.IntegralLimit, -xGains.IntegralLimit, xGains.Deadband, xGains.IntegralDecay);
+            _y = new PIDController(yGains.Kp, yGains.Ki, yGains.Kd, yGains.IntegralLimit, -yGains.IntegralLimit, yGains.Deadband, yGains.IntegralDecay);
+            _z = new PIDController(zGains.Kp, zGains.Ki, zGains.Kd, zGains.IntegralLimit, -zGains.IntegralLimit, zGains.Deadband, zGains.IntegralDecay);
         }
 
         /// <summary>
         /// Initializes a new PIDController3D with explicit gain values for all axes.
         /// </summary>
-        public PIDController3D(double kp, double ki, double kd, double integralLimit = 100)
+        /// <param name="kp">Proportional gain</param>
+        /// <param name="ki">Integral gain</param>
+        /// <param name="kd">Derivative gain</param>
+        /// <param name="integralLimit">Max integral accumulation (limits windup)</param>
+        /// <param name="deadband">Error below which integral stops accumulating</param>
+        /// <param name="integralDecay">Decay factor per tick (0.98 = 2% decay per tick)</param>
+        public PIDController3D(double kp, double ki, double kd,
+                               double integralLimit = 5.0,
+                               double deadband = 0.5,
+                               double integralDecay = 0.98)
         {
-            _x = new PIDController(kp, ki, kd, integralLimit, -integralLimit);
-            _y = new PIDController(kp, ki, kd, integralLimit, -integralLimit);
-            _z = new PIDController(kp, ki, kd, integralLimit, -integralLimit);
+            _x = new PIDController(kp, ki, kd, integralLimit, -integralLimit, deadband, integralDecay);
+            _y = new PIDController(kp, ki, kd, integralLimit, -integralLimit, deadband, integralDecay);
+            _z = new PIDController(kp, ki, kd, integralLimit, -integralLimit, deadband, integralDecay);
         }
 
         /// <summary>

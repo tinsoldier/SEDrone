@@ -68,7 +68,7 @@ namespace IngameScript
         /// Use for moving targets (e.g., another ship).
         /// </summary>
         public Move(Func<Vector3D> worldPositionFunc, double maxSpeed = -1,
-                    double kp = 1.0, double ki = 0.1, double kd = 0.5)
+                    double kp = 1.0, double ki = 0.01, double kd = 0.5)
         {
             _targetFunc = worldPositionFunc;
             _isRelative = false;
@@ -85,7 +85,7 @@ namespace IngameScript
         /// Use for formation flying or intercept.
         /// </summary>
         public Move(Func<Vector3D> worldPositionFunc, Func<Vector3D> targetVelocityFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.1, double kd = 0.5)
+                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
         {
             _targetFunc = worldPositionFunc;
             _targetVelocityFunc = targetVelocityFunc;
@@ -103,7 +103,7 @@ namespace IngameScript
         /// Example: offset=(0, -5, 15) relative to leader position
         /// </summary>
         public Move(Vector3D localOffset, Func<Vector3D> referenceFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.1, double kd = 0.5)
+                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
         {
             _targetFunc = () => localOffset;
             _referenceFunc = referenceFunc;
@@ -118,7 +118,7 @@ namespace IngameScript
         /// </summary>
         public Move(Func<Vector3D> localOffsetFunc, Func<Vector3D> referenceFunc,
                     Func<Vector3D> targetVelocityFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.1, double kd = 0.5)
+                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
         {
             _targetFunc = localOffsetFunc;
             _referenceFunc = referenceFunc;
@@ -140,7 +140,7 @@ namespace IngameScript
         /// Example: Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState)
         /// </summary>
         public Move(Vector3D localOffset, Func<IOrientedReference> orientedRefFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.1, double kd = 0.5)
+                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
         {
             _targetFunc = () => localOffset;
             _orientedRefFunc = orientedRefFunc;
@@ -154,7 +154,7 @@ namespace IngameScript
         /// Example: complex formations where offset changes over time.
         /// </summary>
         public Move(Func<Vector3D> localOffsetFunc, Func<IOrientedReference> orientedRefFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.1, double kd = 0.5)
+                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
         {
             _targetFunc = localOffsetFunc;
             _orientedRefFunc = orientedRefFunc;
@@ -210,11 +210,28 @@ namespace IngameScript
                 return;
             }
 
-            // Adjust for braking distance to prevent overshoot
+            // Calculate current velocity
             Vector3D currentVelocity = ctx.Velocity;
             double currentSpeed = currentVelocity.Length();
 
-            if (currentSpeed > 0.1 && IsValid(currentVelocity))
+            // Filter noise: treat very small target velocities as zero (physics jitter)
+            double targetSpeed = targetVelocity.Length();
+            if (targetSpeed < 0.5)
+            {
+                targetVelocity = Vector3D.Zero;
+                targetSpeed = 0;
+            }
+
+            // If we're station-keeping (near-zero target velocity) and already slow, let dampeners handle it
+            // This prevents PID from amplifying sensor noise when both ships are stationary
+            if (targetSpeed < 0.1 && currentSpeed < 2.0)
+            {
+                ctx.Thrusters.Release();
+                return;
+            }
+
+            // Adjust for braking distance to prevent overshoot (only at higher speeds)
+            if (currentSpeed > 5.0 && IsValid(currentVelocity))
             {
                 double brakingDistance = ctx.Thrusters.GetBrakingDistance(currentSpeed, currentVelocity);
                 if (!double.IsNaN(brakingDistance) && !double.IsInfinity(brakingDistance) && brakingDistance > 0)
