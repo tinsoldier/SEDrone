@@ -500,8 +500,13 @@ namespace IngameScript
                     Echo?.Invoke("[Drone] Received DOCK command from leader");
                     break;
 
+                // case DroneCommand.FastDock:
+                //     SetDirective(new FastDockDirective());
+                //     Echo?.Invoke("[Drone] Received FASTDOCK command from leader");
+                //     break;
+
                 case DroneCommand.FastDock:
-                    SetDirective(new FastDockDirective());
+                    SetDirective(new FastDockAltDirective());
                     Echo?.Invoke("[Drone] Received FASTDOCK command from leader");
                     break;
 
