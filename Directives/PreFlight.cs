@@ -70,7 +70,7 @@ namespace IngameScript
             // Move to clear position
             yield return new BehaviorIntent
             {
-                Position = new Approach(clearPosition, speedLimit: ctx.Config.DockingApproachSpeed),
+                Position = new Move(() => clearPosition, maxSpeed: ctx.Config.DockingApproachSpeed),
                 Orientation = new StayLevel(),
                 ExitWhen = () => ctx.DistanceTo(clearPosition) < 3.0
             };

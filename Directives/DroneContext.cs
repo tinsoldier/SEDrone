@@ -203,18 +203,68 @@ namespace IngameScript
 
         // === Docking state ===
 
+        private IMyShipConnector _activeConnector;
+
         /// <summary>
         /// The currently active connector used for docking.
         /// Set by DockDirective when connector is selected.
+        /// Auto-detects connected connector if not set (e.g., after game reload).
         /// </summary>
-        public IMyShipConnector ActiveConnector { get; set; }
+        public IMyShipConnector ActiveConnector
+        {
+            get
+            {
+                // If explicitly set and still connected, use it
+                if (_activeConnector != null && _activeConnector.Status == MyShipConnectorStatus.Connected)
+                    return _activeConnector;
+
+                // Auto-detect: find any connected connector on our grid
+                var connectors = new System.Collections.Generic.List<IMyShipConnector>();
+                GridTerminalSystem.GetBlocksOfType(connectors, c => c.CubeGrid.EntityId == Me.CubeGrid.EntityId);
+
+                IMyShipConnector firstConnected = null;
+                foreach (var connector in connectors)
+                {
+                    if (connector.Status == MyShipConnectorStatus.Connected)
+                    {
+                        // Prefer connector connected to leader's grid
+                        if (HasLeaderContact && connector.OtherConnector != null)
+                        {
+                            long leaderGridId = LastLeaderState.EntityId;
+                            if (connector.OtherConnector.CubeGrid.EntityId == leaderGridId)
+                            {
+                                _activeConnector = connector;
+                                return connector;
+                            }
+                        }
+
+                        // Track first connected as fallback
+                        if (firstConnected == null)
+                            firstConnected = connector;
+                    }
+                }
+
+                // Return first connected if no leader match found
+                if (firstConnected != null)
+                {
+                    _activeConnector = firstConnected;
+                    return firstConnected;
+                }
+
+                return null;
+            }
+            set { _activeConnector = value; }
+        }
 
         /// <summary>
         /// Returns true if the drone is currently docked (connector connected).
         /// </summary>
         public bool IsDocked
         {
-            get { return ActiveConnector != null && ActiveConnector.Status == MyShipConnectorStatus.Connected; }
+            get
+            {
+                return ActiveConnector != null && ActiveConnector.Status == MyShipConnectorStatus.Connected;
+            }
         }
 
         /// <summary>

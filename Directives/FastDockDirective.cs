@@ -27,9 +27,8 @@ namespace IngameScript
         // === Configuration Constants (Spug-inspired) ===
         private const double SIDEWAYS_DIST_NEEDED = 3.0;        // Must be within 3m laterally
         private const double HEIGHT_CLEARANCE = 6.0;             // Start approach 6m out along connector axis
-        private const double ROTATION_ACCURACY_RAD = 0.035;      // ~2 degrees alignment tolerance
+        private const double ROTATION_ACCURACY_RAD = 0.08;      // pi-rad alignment tolerance
         private const double DIRECTION_ACCURACY_DEG = 15.0;      // Must be within 15 degrees to proceed
-        private const double VELOCITY_DAMPENER = 0.8;            // Reduce prediction for high-speed targets
 
         public IEnumerable<BehaviorIntent> Execute(DroneContext ctx)
         {
@@ -134,6 +133,7 @@ namespace IngameScript
                 // Spug's approach: only connect when both conditions met in same tick
                 if (droneConnector.Status == MyShipConnectorStatus.Connectable)
                 {
+                    ctx.Debug?.Log("FastDock: Attempting lock...");
                     // Check rotation accuracy
                     Vector3D targetForward = helpers.GetTargetConnectorForward();
                     Vector3D droneForward = droneConnector.WorldMatrix.Forward;
@@ -162,7 +162,7 @@ namespace IngameScript
                 // This is where Spug's approach shines: pure geometry, no state tracking
 
                 // Get raw target connector position for geometry calculations
-                Vector3D targetConnectorWorldPos = helpers.GetPredictedConnectorPosition();
+                Vector3D targetConnectorWorldPos = helpers.GetTargetConnectorPosition();
                 Vector3D connectorForward = helpers.GetTargetConnectorForward();
                 Vector3D connectorUp = helpers.GetTargetConnectorUp();
 
@@ -200,12 +200,11 @@ namespace IngameScript
                 // Priority 1: If very misaligned, orient first
                 if (alignmentAngle > DIRECTION_ACCURACY_DEG)
                 {
-                    ctx.Debug?.Log($"FastDock: Orienting (angle={alignmentAngle:F1}°)");
+                    ctx.Debug?.Log($"FastDock: Orienting"); // (angle={alignmentAngle:F1}°)
                     // Not aligned enough - hold formation position while orienting
                     yield return new BehaviorIntent
                     {
-                        Position = new Approach(() => ctx.GetFormationPosition(),
-                            matchLeaderVelocity: true),
+                        Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };
@@ -214,15 +213,16 @@ namespace IngameScript
                 // This prevents oscillation when nearly aligned
                 else if (distanceToConnector < heightNeeded * 1.5 && sidewaysDistance <= SIDEWAYS_DIST_NEEDED * 1.5)
                 {
-                    ctx.Debug?.Log($"FastDock: Final approach (dist={distanceToConnector:F1}m, side={sidewaysDistance:F1}m)");
+                    ctx.Debug?.Log($"FastDock: Final approach"); // (dist={distanceToConnector:F1}m)
                     // Close to connector AND reasonably aligned - commit to final approach
                     // The 1.5x multiplier on sideways check provides some tolerance to prevent oscillation
+                    double finalDist = droneConnectorSize + targetConnectorSize;
                     yield return new BehaviorIntent
                     {
-                        Position = new Approach(() => helpers.GetWaypointAtDistance(droneConnectorSize + targetConnectorSize),
-                            speedLimit: ctx.Config.DockingFinalSpeed,
-                            matchLeaderVelocity: true,
-                            bypassPrecisionRadius: true),
+                        Position = new Move(
+                            new Vector3D(0, 0, finalDist),
+                            () => helpers.GetConnectorReference(),
+                            closingSpeed: ctx.Config.DockingFinalSpeed),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };
@@ -231,20 +231,14 @@ namespace IngameScript
                 else if (sidewaysDistance > SIDEWAYS_DIST_NEEDED &&
                          signedHeightDistance < heightNeeded * 0.5)  // Only if REALLY behind
                 {
-                    ctx.Debug?.Log($"FastDock: Repositioning (behind connector, side={sidewaysDistance:F1}m)");
-                    // Behind connector - move to correct side first
-                    // Clamp repositioning distance to prevent launching away
+                    ctx.Debug?.Log($"FastDock: Repositioning"); // (behind connector, side={sidewaysDistance:F1}m)
+                    // Behind connector - move to holding position
                     yield return new BehaviorIntent
                     {
-                        Position = new Approach(() =>
-                        {
-                            Vector3D targetPos = helpers.GetPredictedConnectorPosition();
-                            Vector3D forward = helpers.GetTargetConnectorForward();
-                            // Simply go to holding position, don't try to calculate fancy reposition
-                            return helpers.GetWaypointAtDistance(heightNeeded);
-                        },
-                        speedLimit: ctx.Config.DockingApproachSpeed,
-                        matchLeaderVelocity: true),
+                        Position = new Move(
+                            new Vector3D(0, 0, heightNeeded),
+                            () => helpers.GetConnectorReference(),
+                            closingSpeed: ctx.Config.DockingApproachSpeed),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };
@@ -252,12 +246,13 @@ namespace IngameScript
                 // Priority 4: Sideways offset too large - approach holding position
                 else if (sidewaysDistance > SIDEWAYS_DIST_NEEDED)
                 {
-                    ctx.Debug?.Log($"FastDock: Approaching hold (side={sidewaysDistance:F1}m)");
+                    ctx.Debug?.Log($"FastDock: Approaching hold"); // (side={sidewaysDistance:F1}m)
                     yield return new BehaviorIntent
                     {
-                        Position = new Approach(() => helpers.GetWaypointAtDistance(heightNeeded),
-                            speedLimit: ctx.Config.DockingApproachSpeed,
-                            matchLeaderVelocity: true),
+                        Position = new Move(
+                            new Vector3D(0, 0, heightNeeded),
+                            () => helpers.GetConnectorReference(),
+                            closingSpeed: ctx.Config.DockingApproachSpeed),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };
@@ -265,13 +260,13 @@ namespace IngameScript
                 // Priority 5: Default - final landing approach
                 else
                 {
-                    ctx.Debug?.Log($"FastDock: Landing (dist={distanceToConnector:F1}m, status={droneConnector.Status})");
+                    ctx.Debug?.Log($"FastDock: Landing"); // (dist={distanceToConnector:F1}m, status={droneConnector.Status})
+                    double landingDist = droneConnectorSize + targetConnectorSize - 0.2;
                     yield return new BehaviorIntent
                     {
-                        Position = new Approach(() => helpers.GetWaypointAtDistance(droneConnectorSize + targetConnectorSize),
-                            speedLimit: ctx.Config.DockingFinalSpeed,
-                            matchLeaderVelocity: true,
-                            bypassPrecisionRadius: true),
+                        Position = new Move(
+                            new Vector3D(0, 0, landingDist),
+                            () => helpers.GetConnectorReference()),
                         Orientation = connectorOrientation,
                         ExitWhen = () => true  // Exit immediately, re-evaluate next tick
                     };
@@ -343,22 +338,15 @@ namespace IngameScript
             }
 
             /// <summary>
-            /// Gets connector position with velocity prediction (Spug's approach).
-            /// Uses a default prediction time of ~1/6th second (10 ticks at 60fps).
+            /// Gets the raw connector world position (no prediction).
+            /// Move behavior handles velocity matching internally.
             /// </summary>
-            public Vector3D GetPredictedConnectorPosition(double deltaTime = 0.166)
+            public Vector3D GetTargetConnectorPosition()
             {
                 if (!_ctx.HasLeaderContact) return Vector3D.Zero;
 
                 MatrixD coordMatrix = GetCoordinateMatrix();
-                Vector3D targetConnectorWorldPos = Vector3D.Transform(_response.ConnectorOffset, coordMatrix);
-
-                // Apply velocity prediction (Spug uses DeltaTimeReal)
-                Vector3D stationVelocity = _ctx.LastLeaderState.Velocity;
-                double speedDampener = 1.0 - ((stationVelocity.Length() / 100.0) * 0.2 * VELOCITY_DAMPENER);
-                Vector3D prediction = deltaTime * stationVelocity * speedDampener;
-
-                return targetConnectorWorldPos + prediction;
+                return Vector3D.Transform(_response.ConnectorOffset, coordMatrix);
             }
 
             /// <summary>
@@ -367,7 +355,7 @@ namespace IngameScript
             /// </summary>
             public Vector3D GetConnectorPosition()
             {
-                Vector3D targetPos = GetPredictedConnectorPosition();
+                Vector3D targetPos = GetTargetConnectorPosition();
                 Vector3D referenceToConnectorOffset = GetReferenceToConnectorOffset();
                 return targetPos - referenceToConnectorOffset;
             }
@@ -386,14 +374,22 @@ namespace IngameScript
             }
 
             /// <summary>
-            /// Adjusts a world position to account for reference-to-connector offset.
-            /// Converts connector-relative positions to reference-relative positions.
+            /// Creates an IOrientedReference representing the target connector's reference frame.
+            /// Position is adjusted for drone reference-to-connector offset.
+            /// Velocity matches the leader for smooth tracking.
+            /// Local Z axis points along connector forward (approach direction).
             /// </summary>
-            public Vector3D AdjustForReferenceBlock(Vector3D worldPosition)
+            public IOrientedReference GetConnectorReference()
             {
-                if (_droneConnector == null) return worldPosition;
-                Vector3D referenceToConnectorOffset = GetReferenceToConnectorOffset();
-                return worldPosition - referenceToConnectorOffset;
+                if (!_ctx.HasLeaderContact)
+                    return new ConnectorReference(Vector3D.Zero, Vector3D.Forward, Vector3D.Up, Vector3D.Zero);
+
+                return new ConnectorReference(
+                    GetConnectorPosition(),
+                    GetTargetConnectorForward(),
+                    GetTargetConnectorUp(),
+                    _ctx.LastLeaderState.Velocity
+                );
             }
         }
     }

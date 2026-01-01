@@ -58,11 +58,12 @@ namespace IngameScript
             while (true)
             {
                 // Broadcast position at fixed interval
-                if (_context.GameTime - _lastBroadcastTime >= BROADCAST_INTERVAL)
-                {
-                    BroadcastState();
-                    _lastBroadcastTime = _context.GameTime;
-                }
+                // if (_context.GameTime - _lastBroadcastTime >= BROADCAST_INTERVAL)
+                // {
+                //     BroadcastState();
+                //     _lastBroadcastTime = _context.GameTime;
+                // }
+                BroadcastState();
 
                 // Process docking requests
                 ProcessDockingRequests();

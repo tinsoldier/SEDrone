@@ -25,6 +25,11 @@ namespace IngameScript
 
         public IEnumerable<BehaviorIntent> Execute(DroneContext ctx)
         {
+            if(PreFlight.NeedsPreFlight(ctx))
+            {
+                ctx.Debug?.Log($"[{Name}] Docked, executing pre-flight.");
+            }
+
             // === Pre-flight: Undock if docked ===
             foreach (var intent in PreFlight.EnsureUndocked(ctx))
                 yield return intent;

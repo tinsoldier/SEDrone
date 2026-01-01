@@ -15,14 +15,18 @@ namespace IngameScript
     /// </summary>
     public class Move : IPositionBehavior
     {
-        // === Default PID Tuning ===
-        // These values control responsiveness and precision
-        // Kp: Proportional gain - how strongly to react to position error
-        // Ki: Integral gain - how strongly to correct persistent error
-        // Kd: Derivative gain - how strongly to dampen/predict changes
-        private const double DEFAULT_KP = 5.0;  // Increased from 1.0 for faster response
-        private const double DEFAULT_KI = 0.5; // Increased from 0.01 for better steady-state
-        private const double DEFAULT_KD = 1.5;  // Increased from 0.5 for better damping
+        // === Closing Speed Control ===
+        // TAU: Time constant for closing - "close the gap in TAU seconds"
+        // Lower TAU = more aggressive, Higher TAU = gentler approach
+        private const double TAU = 3.5;  // Try to close gap in 1.5 seconds
+        private const double MIN_CLOSING_SPEED = 1.0;  // Minimum 1 m/s closing
+        private const double DEFAULT_MAX_CLOSING_SPEED = 150.0;  // Default max closing speed
+
+        // === PID Tuning (for damping only) ===
+        // With feed-forward closing velocity, PID is reduced to damping role
+        private const double DEFAULT_KP = 2;  // Small proportional for fine correction
+        private const double DEFAULT_KI = 0.2;  // No integral needed with feed-forward
+        private const double DEFAULT_KD = 1.0;  // Derivative for damping oscillations
 
         // === Target Configuration ===
         private readonly Func<Vector3D> _targetFunc;
@@ -39,6 +43,7 @@ namespace IngameScript
 
         // === Speed Limiting ===
         private readonly double _maxSpeed;
+        private readonly double _maxClosingSpeed;
 
         /// <summary>
         /// Target position evaluated each tick.
@@ -83,6 +88,7 @@ namespace IngameScript
             _isRelative = false;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
+            _maxClosingSpeed = DEFAULT_MAX_CLOSING_SPEED;
         }
 
         // ============================================================
@@ -93,14 +99,20 @@ namespace IngameScript
         /// Move to a dynamic world position and match its velocity.
         /// Use for formation flying or intercept.
         /// </summary>
+        /// <param name="worldPositionFunc">Function returning target world position</param>
+        /// <param name="targetVelocityFunc">Function returning target velocity to match</param>
+        /// <param name="maxSpeed">Absolute speed limit (-1 = no limit)</param>
+        /// <param name="closingSpeed">Max speed to close gap with moving target (-1 = default 100 m/s)</param>
         public Move(Func<Vector3D> worldPositionFunc, Func<Vector3D> targetVelocityFunc,
-                    double maxSpeed = -1, double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
+                    double maxSpeed = -1, double closingSpeed = -1,
+                    double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
         {
             _targetFunc = worldPositionFunc;
             _targetVelocityFunc = targetVelocityFunc;
             _isRelative = false;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
+            _maxClosingSpeed = closingSpeed > 0 ? closingSpeed : DEFAULT_MAX_CLOSING_SPEED;
         }
 
         // ============================================================
@@ -119,6 +131,7 @@ namespace IngameScript
             _isRelative = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
+            _maxClosingSpeed = DEFAULT_MAX_CLOSING_SPEED;
         }
 
         /// <summary>
@@ -135,6 +148,7 @@ namespace IngameScript
             _isRelative = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
+            _maxClosingSpeed = DEFAULT_MAX_CLOSING_SPEED;
         }
 
         // ============================================================
@@ -148,14 +162,20 @@ namespace IngameScript
         ///
         /// Example: Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState)
         /// </summary>
+        /// <param name="localOffset">Offset in leader's local space (X=right, Y=up, Z=forward)</param>
+        /// <param name="orientedRefFunc">Function returning the oriented reference (leader state)</param>
+        /// <param name="maxSpeed">Absolute speed limit (-1 = no limit)</param>
+        /// <param name="closingSpeed">Max speed to close gap with moving target (-1 = default 100 m/s)</param>
         public Move(Vector3D localOffset, Func<IOrientedReference> orientedRefFunc,
-                    double maxSpeed = -1, double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
+                    double maxSpeed = -1, double closingSpeed = -1,
+                    double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
         {
             _targetFunc = () => localOffset;
             _orientedRefFunc = orientedRefFunc;
             _isFormation = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
+            _maxClosingSpeed = closingSpeed > 0 ? closingSpeed : DEFAULT_MAX_CLOSING_SPEED;
         }
 
         /// <summary>
@@ -163,13 +183,15 @@ namespace IngameScript
         /// Example: complex formations where offset changes over time.
         /// </summary>
         public Move(Func<Vector3D> localOffsetFunc, Func<IOrientedReference> orientedRefFunc,
-                    double maxSpeed = -1, double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
+                    double maxSpeed = -1, double closingSpeed = -1,
+                    double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
         {
             _targetFunc = localOffsetFunc;
             _orientedRefFunc = orientedRefFunc;
             _isFormation = true;
             _pid = new PIDController3D(kp, ki, kd);
             _maxSpeed = maxSpeed;
+            _maxClosingSpeed = closingSpeed > 0 ? closingSpeed : DEFAULT_MAX_CLOSING_SPEED;
         }
 
         public void Execute(DroneContext ctx)
@@ -240,24 +262,24 @@ namespace IngameScript
             double positionErrorMagnitude = positionError.Length();
             if (targetSpeed < 0.1 && currentSpeed < 2.0 && positionErrorMagnitude < 0.1) // 0.1m for max precision
             {
-                ctx.Debug?.Log("Move: holding station");
+                //ctx.Debug?.Log("Move: holding station");
                 ctx.Thrusters.Release();
                 return;
             }
 
             // Adjust for braking distance to prevent overshoot (only at higher speeds)
-            if (currentSpeed > 5.0 && IsValid(currentVelocity))
-            {
-                double brakingDistance = ctx.Thrusters.GetBrakingDistance(currentSpeed, currentVelocity);
-                if (!double.IsNaN(brakingDistance) && !double.IsInfinity(brakingDistance) && brakingDistance > 0)
-                {
-                    Vector3D brakingVector = Vector3D.Normalize(currentVelocity) * brakingDistance * ctx.Config.BrakingSafetyMargin;
-                    if (IsValid(brakingVector))
-                    {
-                        positionError -= brakingVector;
-                    }
-                }
-            }
+            // if (currentSpeed > 5.0 && IsValid(currentVelocity))
+            // {
+            //     double brakingDistance = ctx.Thrusters.GetBrakingDistance(currentSpeed, currentVelocity);
+            //     if (!double.IsNaN(brakingDistance) && !double.IsInfinity(brakingDistance) && brakingDistance > 0)
+            //     {
+            //         Vector3D brakingVector = Vector3D.Normalize(currentVelocity) * brakingDistance * ctx.Config.BrakingSafetyMargin;
+            //         if (IsValid(brakingVector))
+            //         {
+            //             positionError -= brakingVector;
+            //         }
+            //     }
+            // }
 
             // Guard against invalid deltaTime (can happen on first tick after directive switch)
             // if (ctx.DeltaTime <= 0.0001)
@@ -312,31 +334,69 @@ namespace IngameScript
             }
             else
             {
-                // Target is moving - use PID correction on top of velocity matching
-                Vector3D correction = _pid.Compute(positionError, ctx.DeltaTime);
+                // Target is moving - use feed-forward closing velocity + intercept prediction
+                // Formula: desiredVelocity = targetVelocity + direction * closingSpeed + damping
 
-                // Safety check on PID output
-                if (!IsValid(correction))
+                double distance = positionError.Length();
+
+                // Estimate time to intercept based on closing speed
+                double timeToIntercept = Math.Min(distance / _maxClosingSpeed, 1);
+
+                // Lead the target: predict where it will be when we arrive
+                Vector3D leadOffset = targetVelocity * ctx.DeltaTime*4;
+                Vector3D predictedError = positionError + leadOffset;
+                double predictedDistance = predictedError.Length();
+
+                //ctx.Debug?.Log($"Move: predDist={predictedDistance:F1}m");
+
+                if (predictedDistance > 0.1)
                 {
-                    ctx.Debug?.Log($"Move: Invalid PID output (dt={ctx.DeltaTime:F4}, posErr={positionError.Length():F1})");
-                    ctx.Thrusters.Release();
-                    _pid.Reset();
-                    return;
-                }
+                    // Direction to predicted target position
+                    Vector3D direction = predictedError / predictedDistance;
+                    //Vector3D direction = positionError / predictedDistance;
 
-                // Desired velocity = target velocity + correction
-                desiredVelocity = targetVelocity + correction;
+                    // Feed-forward closing speed: distance / TAU, clamped
+                    // This means "try to close the gap in TAU seconds"
+                    double closingSpeed = predictedDistance / TAU;
+                    closingSpeed = Math.Max(closingSpeed, MIN_CLOSING_SPEED);
+                    closingSpeed = Math.Min(closingSpeed, _maxClosingSpeed);
+
+                    // Small PID damping term for smooth approach (reduces oscillation)
+                    Vector3D damping = _pid.Compute(positionError, ctx.DeltaTime);
+                    if (!IsValid(damping))
+                    {
+                        damping = Vector3D.Zero;
+                        _pid.Reset();
+                    }
+
+                    desiredVelocity = targetVelocity + direction * closingSpeed + damping;
+
+                    var dir = positionError / positionError.Length();
+                    var closingCmd = Vector3D.Dot(desiredVelocity - targetVelocity, dir);
+
+
+                    // Debug logging
+                    if (distance > 10.0)
+                    {
+                        ctx.Debug?.Log($"Move: close={closingCmd:F1}m/s");
+                    }
+                }
+                else
+                {
+                    // Very close - just match target velocity
+                    desiredVelocity = targetVelocity;
+                }
             }
 
             // Apply speed limit if specified
-            if (_maxSpeed > 0)
-            {
-                double speed = desiredVelocity.Length();
-                if (speed > _maxSpeed && speed > 0)
-                {
-                    desiredVelocity = (desiredVelocity / speed) * _maxSpeed;
-                }
-            }
+            // if (_maxSpeed > 0)
+            // {
+            //     double speed = desiredVelocity.Length();
+            //     if (speed > _maxSpeed && speed > 0)
+            //     {
+            //         desiredVelocity = (desiredVelocity / speed) * _maxSpeed;
+            //     }
+            // }
 
             // Final safety check before commanding thrusters
             if (!IsValid(desiredVelocity))
