@@ -111,6 +111,7 @@ namespace IngameScript
                 // Check if already connected - stay docked
                 if (droneConnector.Status == MyShipConnectorStatus.Connected)
                 {
+                    ctx.Debug?.Log("FastDock: Connected!");
                     ctx.ActiveConnector = droneConnector;
                     ctx.SetDampeners(false);
 
@@ -199,6 +200,7 @@ namespace IngameScript
                 // Priority 1: If very misaligned, orient first
                 if (alignmentAngle > DIRECTION_ACCURACY_DEG)
                 {
+                    ctx.Debug?.Log($"FastDock: Orienting (angle={alignmentAngle:F1}°)");
                     // Not aligned enough - hold formation position while orienting
                     yield return new BehaviorIntent
                     {
@@ -212,6 +214,7 @@ namespace IngameScript
                 // This prevents oscillation when nearly aligned
                 else if (distanceToConnector < heightNeeded * 1.5 && sidewaysDistance <= SIDEWAYS_DIST_NEEDED * 1.5)
                 {
+                    ctx.Debug?.Log($"FastDock: Final approach (dist={distanceToConnector:F1}m, side={sidewaysDistance:F1}m)");
                     // Close to connector AND reasonably aligned - commit to final approach
                     // The 1.5x multiplier on sideways check provides some tolerance to prevent oscillation
                     yield return new BehaviorIntent
@@ -228,6 +231,7 @@ namespace IngameScript
                 else if (sidewaysDistance > SIDEWAYS_DIST_NEEDED &&
                          signedHeightDistance < heightNeeded * 0.5)  // Only if REALLY behind
                 {
+                    ctx.Debug?.Log($"FastDock: Repositioning (behind connector, side={sidewaysDistance:F1}m)");
                     // Behind connector - move to correct side first
                     // Clamp repositioning distance to prevent launching away
                     yield return new BehaviorIntent
@@ -248,6 +252,7 @@ namespace IngameScript
                 // Priority 4: Sideways offset too large - approach holding position
                 else if (sidewaysDistance > SIDEWAYS_DIST_NEEDED)
                 {
+                    ctx.Debug?.Log($"FastDock: Approaching hold (side={sidewaysDistance:F1}m)");
                     yield return new BehaviorIntent
                     {
                         Position = new Approach(() => helpers.GetWaypointAtDistance(heightNeeded),
@@ -260,6 +265,7 @@ namespace IngameScript
                 // Priority 5: Default - final landing approach
                 else
                 {
+                    ctx.Debug?.Log($"FastDock: Landing (dist={distanceToConnector:F1}m, status={droneConnector.Status})");
                     yield return new BehaviorIntent
                     {
                         Position = new Approach(() => helpers.GetWaypointAtDistance(droneConnectorSize + targetConnectorSize),

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices.ComTypes;
 using Sandbox.ModAPI.Ingame;
 using VRage;
 using VRageMath;
@@ -122,8 +123,11 @@ namespace IngameScript
             // Initialize tactical context
             _tacticalContext = new TacticalContext();
 
+            // Initialize debug logger (writes to PB Echo)
+            var debugLogger = new DebugLogger(context.Echo, () => context.GameTime);
+
             // Initialize drone context (passed to directives)
-            _droneContext = new DroneContext(this, _tacticalContext);
+            _droneContext = new DroneContext(this, _tacticalContext, debugLogger);
 
             // Initialize WeaponCore APIs
             InitializeWeaponCore(context);
@@ -210,6 +214,9 @@ namespace IngameScript
                     RunDirective();
 
                     UpdateStatus();
+
+                    // Flush debug logs to Echo
+                    _droneContext.Debug?.Flush();
                 }
                 catch (Exception ex)
                 {

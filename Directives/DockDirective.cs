@@ -25,6 +25,7 @@ namespace IngameScript
 
         public IEnumerable<BehaviorIntent> Execute(DroneContext ctx)
         {
+            ctx.Debug?.Log($"Dock: Starting Docking");
             // === PHASE 1: Request Docking Pad ===
             PendingDockingRequest padRequest = ctx.IGCRequests.RequestDockingPad(ctx.GameTime);
 
@@ -46,6 +47,7 @@ namespace IngameScript
                 }
             }
 
+            ctx.Debug?.Log($"Dock: Waiting for response");
             // Get the response
             DockingPadResponse padResponse;
             if (!padRequest.TryGetResult(out padResponse))
@@ -55,8 +57,11 @@ namespace IngameScript
                 yield break;
             }
 
+            ctx.Debug?.Log($"Dock: Received response");
+
             if (!padResponse.Available)
             {
+                ctx.Debug?.Log($"Dock: No docking pad available on leader");
                 yield return BehaviorIntent.Aborted(AbortReason.TargetLost,
                     "No docking pad available on leader");
                 yield break;
@@ -113,6 +118,7 @@ namespace IngameScript
                 while (waypointIndex < waypointDistances.Count - 1)
                 {
                     int currentIndex = waypointIndex; // Capture for closure
+                    ctx.Debug?.Log($"Dock: Phase 4 - Waypoint {currentIndex + 1}/{waypointDistances.Count}");
 
                     if(currentIndex == 0)
                     {
@@ -122,27 +128,36 @@ namespace IngameScript
                         {
                             Position = new Move(
                                 new Vector3D(0, 0, waypointDistances[currentIndex]),  // Local offset along connector forward
-                                () => helpers.GetConnectorReference(),
-                                maxSpeed: ctx.Config.DockingApproachSpeed),
+                                () => helpers.GetConnectorReference()),
                             Orientation = new LevelTurnToward(() => helpers.GetWaypointAtDistance(waypointDistances[currentIndex]) + helpers.GetTargetConnectorUp() * 20.0),
                             ExitWhen = () =>
                             {
                                 // Check distance
                                 if (ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex])) >= 3.0)
+                                {
+                                    ctx.Debug?.Log("Dock: Not yet at first waypoint");
                                     return false;
+                                }
 
                                 // Check velocity matching (within 1 m/s of leader's velocity magnitude)
                                 Vector3D relativeVelocity = ctx.Velocity - ctx.LastLeaderState.Velocity;
                                 if (relativeVelocity.Length() > 1.0)
+                                {
+                                    ctx.Debug?.Log($"Dock: Velocity not yet matched (relVel={relativeVelocity.Length():F2} m/s)");
                                     return false;
+                                }
 
                                 // Check orientation alignment (within 5 degrees)
                                 // if(!ctx.Gyros.IsLevel(5.0))
                                 //     return false;
 
                                 if(!ctx.Gyros.IsAligned)
+                                {   
+                                    ctx.Debug?.Log("Dock: Orientation not yet aligned");
                                     return false;
+                                }
 
+                                ctx.Debug?.Log("Dock: Reached first waypoint with velocity matched");
                                 return true;
                             }
                         };
@@ -164,6 +179,7 @@ namespace IngameScript
                 }
 
                 // === PHASE 5: Final Docking Approach ===
+                ctx.Debug?.Log($"Dock: Phase 5 - Final approach");
 
                 yield return new BehaviorIntent
                 {
@@ -176,11 +192,17 @@ namespace IngameScript
                 };
 
                 // === PHASE 6: Connector Lock Attempt ===
+                ctx.Debug?.Log($"Dock: Phase 6 - Lock attempt (status={droneConnector.Status})");
 
-                // Move to exact connector position (zero offset from connector reference)
+                // Move to one connector radius away (let magnetic lock pull them together gently)
+                // This prevents the "bump" by stopping short and letting connector magnets do final pull
+                double finalApproachDistance = droneConnectorSize + targetConnectorSize;
                 yield return new BehaviorIntent
                 {
-                    Position = new Move(Vector3D.Zero, () => helpers.GetConnectorReference(), maxSpeed: ctx.Config.DockingFinalSpeed),
+                    Position = new Move(
+                        new Vector3D(0, 0, finalApproachDistance),
+                        () => helpers.GetConnectorReference(),
+                        maxSpeed: ctx.Config.DockingFinalSpeed),
                     Orientation = dockingOrientation,
                     ExitWhen = () =>
                     {
@@ -203,21 +225,27 @@ namespace IngameScript
                 // Check if docking succeeded
                 if (droneConnector.Status == MyShipConnectorStatus.Connected)
                 {
+                    ctx.Debug?.Log("Dock: Connected!");
                     yield return BehaviorIntent.Complete();
                     yield break;
                 }
 
                 // Attempt connector lock if connectable
+                ctx.Debug?.Log($"Dock: Attempting lock (status={droneConnector.Status})");
                 if (droneConnector.Status == MyShipConnectorStatus.Connectable)
                 {
                     droneConnector.Connect();
 
                     // Hold position while waiting for connection to establish
+                    // Keep holding at one connector radius away - connector magnets will pull us in
                     // Use a timeout to avoid infinite loop
                     double lockStartTime = ctx.GameTime;
                     yield return new BehaviorIntent
                     {
-                        Position = new Move(Vector3D.Zero, () => helpers.GetConnectorReference(), maxSpeed: ctx.Config.DockingLockSpeed),
+                        Position = new Move(
+                            new Vector3D(0, 0, finalApproachDistance),
+                            () => helpers.GetConnectorReference(),
+                            maxSpeed: ctx.Config.DockingLockSpeed),
                         Orientation = dockingOrientation,
                         ExitWhen = () =>
                             droneConnector.Status == MyShipConnectorStatus.Connected ||

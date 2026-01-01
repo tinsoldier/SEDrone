@@ -95,7 +95,12 @@ namespace IngameScript
                 _integral = Math.Max(_integral, _integralLowerLimit);
 
             // Compute derivative based on error change per elapsed time
-            double derivative = (error - _previousError) / deltaTime;
+            // Guard against division by zero or very small deltaTime
+            double derivative = 0;
+            if (deltaTime > 0.001) // At least 1ms
+            {
+                derivative = (error - _previousError) / deltaTime;
+            }
 
             _previousError = error;
 

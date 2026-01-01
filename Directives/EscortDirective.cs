@@ -21,7 +21,7 @@ namespace IngameScript
         public string Name => "Escort";
 
         // Threshold angle (degrees) above which we use LevelFirstApproach
-        private const double LEVEL_FIRST_ANGLE_THRESHOLD = 90.0;
+        private const double LEVEL_FIRST_ANGLE_THRESHOLD = 30.0;
 
         public IEnumerable<BehaviorIntent> Execute(DroneContext ctx)
         {
@@ -49,6 +49,10 @@ namespace IngameScript
                     bool needsApproach = ctx.HasExitedFormation() || !ctx.IsInFormation();
                     bool hadThreats = ctx.Tactical.HasThreats;
 
+                    // Debug logging
+                    ctx.Debug?.Log($"Escort: approach={needsApproach} inFrm={ctx.IsInFormation()} dist={ctx.DistanceToFormation():F1}m");
+                    ctx.Debug?.Log($"  tgtVel={ctx.LastLeaderState.Velocity.Length():F1} m/s, threats={hadThreats}");
+
                     if (needsApproach)
                     {
                         // Determine if we should use level-first approach
@@ -56,26 +60,21 @@ namespace IngameScript
                         double angleToFormation = GetAngleToFormation(ctx);
                         bool useLevelFirst = Math.Abs(angleToFormation) > LEVEL_FIRST_ANGLE_THRESHOLD;
 
-                        if (useLevelFirst)
-                        {
                             // Use coupled behavior - handles both position and orientation
                             yield return new BehaviorIntent
                             {
-                                Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
-                                Orientation = null,  // Coupled behavior handles orientation
+                                Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState,
+                                    maxSpeed: 100),
+                                Orientation = GetFormationOrientation(ctx),  // Coupled behavior handles orientation
                                 ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
                             };
-                        }
-                        else
-                        {
-                            // Normal approach - dynamic target via Func<>
-                            yield return new BehaviorIntent
-                            {
-                                Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
-                                Orientation = GetApproachOrientation(ctx),
-                                ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
-                            };
-                        }
+                            // // Normal approach - dynamic target via Func<>
+                            // yield return new BehaviorIntent
+                            // {
+                            //     Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
+                            //     Orientation = GetApproachOrientation(ctx),
+                            //     ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
+                            // };
                     }
                     else
                     {

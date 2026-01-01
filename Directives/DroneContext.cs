@@ -85,6 +85,12 @@ namespace IngameScript
         /// </summary>
         public TacticalContext Tactical { get; }
 
+        /// <summary>
+        /// Debug logger for development and testing.
+        /// Writes to a text panel named "Debug" if present.
+        /// </summary>
+        public DebugLogger Debug { get; }
+
         // === Hardware access (for executors) ===
 
         /// <summary>
@@ -115,10 +121,11 @@ namespace IngameScript
         /// <summary>
         /// Creates a new DroneContext.
         /// </summary>
-        public DroneContext(DroneBrain brain, TacticalContext tactical)
+        public DroneContext(DroneBrain brain, TacticalContext tactical, DebugLogger debug)
         {
             _brain = brain;
             Tactical = tactical;
+            Debug = debug;
         }
 
         // === Helper methods for directives ===

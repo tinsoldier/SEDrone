@@ -15,6 +15,15 @@ namespace IngameScript
     /// </summary>
     public class Move : IPositionBehavior
     {
+        // === Default PID Tuning ===
+        // These values control responsiveness and precision
+        // Kp: Proportional gain - how strongly to react to position error
+        // Ki: Integral gain - how strongly to correct persistent error
+        // Kd: Derivative gain - how strongly to dampen/predict changes
+        private const double DEFAULT_KP = 5.0;  // Increased from 1.0 for faster response
+        private const double DEFAULT_KI = 0.5; // Increased from 0.01 for better steady-state
+        private const double DEFAULT_KD = 1.5;  // Increased from 0.5 for better damping
+
         // === Target Configuration ===
         private readonly Func<Vector3D> _targetFunc;
         private readonly Func<Vector3D> _referenceFunc;  // For simple relative positioning
@@ -68,7 +77,7 @@ namespace IngameScript
         /// Use for moving targets (e.g., another ship).
         /// </summary>
         public Move(Func<Vector3D> worldPositionFunc, double maxSpeed = -1,
-                    double kp = 1.0, double ki = 0.01, double kd = 0.5)
+                    double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
         {
             _targetFunc = worldPositionFunc;
             _isRelative = false;
@@ -85,7 +94,7 @@ namespace IngameScript
         /// Use for formation flying or intercept.
         /// </summary>
         public Move(Func<Vector3D> worldPositionFunc, Func<Vector3D> targetVelocityFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
+                    double maxSpeed = -1, double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
         {
             _targetFunc = worldPositionFunc;
             _targetVelocityFunc = targetVelocityFunc;
@@ -103,7 +112,7 @@ namespace IngameScript
         /// Example: offset=(0, -5, 15) relative to leader position
         /// </summary>
         public Move(Vector3D localOffset, Func<Vector3D> referenceFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
+                    double maxSpeed = -1, double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
         {
             _targetFunc = () => localOffset;
             _referenceFunc = referenceFunc;
@@ -118,7 +127,7 @@ namespace IngameScript
         /// </summary>
         public Move(Func<Vector3D> localOffsetFunc, Func<Vector3D> referenceFunc,
                     Func<Vector3D> targetVelocityFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
+                    double maxSpeed = -1, double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
         {
             _targetFunc = localOffsetFunc;
             _referenceFunc = referenceFunc;
@@ -140,7 +149,7 @@ namespace IngameScript
         /// Example: Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState)
         /// </summary>
         public Move(Vector3D localOffset, Func<IOrientedReference> orientedRefFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
+                    double maxSpeed = -1, double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
         {
             _targetFunc = () => localOffset;
             _orientedRefFunc = orientedRefFunc;
@@ -154,7 +163,7 @@ namespace IngameScript
         /// Example: complex formations where offset changes over time.
         /// </summary>
         public Move(Func<Vector3D> localOffsetFunc, Func<IOrientedReference> orientedRefFunc,
-                    double maxSpeed = -1, double kp = 1.0, double ki = 0.01, double kd = 0.5)
+                    double maxSpeed = -1, double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
         {
             _targetFunc = localOffsetFunc;
             _orientedRefFunc = orientedRefFunc;
@@ -206,6 +215,7 @@ namespace IngameScript
             // Safety check for invalid values
             if (!IsValid(worldTarget) || !IsValid(ctx.Position) || !IsValid(targetVelocity))
             {
+                ctx.Debug?.Log("Move: Invalid target or position detected, releasing thrusters");
                 ctx.Thrusters.Release();
                 return;
             }
@@ -222,10 +232,15 @@ namespace IngameScript
                 targetSpeed = 0;
             }
 
-            // If we're station-keeping (near-zero target velocity) and already slow, let dampeners handle it
-            // This prevents PID from amplifying sensor noise when both ships are stationary
-            if (targetSpeed < 0.1 && currentSpeed < 2.0)
+            // Station-keeping dampener handoff:
+            // ONLY release control if we're BOTH:
+            // 1. Near the target position (position error is small)
+            // 2. Moving slowly AND target is stationary/slow
+            // This prevents blocking initial acceleration from a stop
+            double positionErrorMagnitude = positionError.Length();
+            if (targetSpeed < 0.1 && currentSpeed < 2.0 && positionErrorMagnitude < 0.1) // 0.1m for max precision
             {
+                ctx.Debug?.Log("Move: holding station");
                 ctx.Thrusters.Release();
                 return;
             }
@@ -244,20 +259,74 @@ namespace IngameScript
                 }
             }
 
-            // PID correction based on position error
-            Vector3D correction = _pid.Compute(positionError, ctx.DeltaTime);
+            // Guard against invalid deltaTime (can happen on first tick after directive switch)
+            // if (ctx.DeltaTime <= 0.0001)
+            // {
+            //     // Skip PID computation on first tick with invalid deltaTime
+            //     ctx.Thrusters.Release();
+            //     return;
+            // }
 
-            // Safety check on PID output
-            if (!IsValid(correction))
+            // Calculate desired velocity based on target motion state
+            Vector3D desiredVelocity;
+
+            if (targetSpeed < 0.1)
             {
-                ctx.Thrusters.Release();
-                _pid.Reset();
-                return;
-            }
+                // Target is stationary - use direct velocity control with braking prediction
+                // This prevents the "gentle drift" problem of PID when target velocity = 0
 
-            // Calculate desired velocity
-            // Desired velocity = target velocity + correction
-            Vector3D desiredVelocity = targetVelocity + correction;
+                double distance = positionError.Length();
+                if (distance > 0.1)
+                {
+                    Vector3D direction = positionError / distance;
+
+                    // Calculate braking distance at current speed
+                    double currentBrakingDist = ctx.Thrusters.GetBrakingDistance(currentSpeed, currentVelocity);
+                    if (double.IsNaN(currentBrakingDist) || double.IsInfinity(currentBrakingDist))
+                        currentBrakingDist = 0;
+
+                    // Determine target speed based on distance
+                    // If we're far away, go fast. If we're close, slow down based on braking distance.
+                    double targetApproachSpeed;
+
+                    if (distance > currentBrakingDist * 3.0)
+                    {
+                        // Far away - use max speed or 100 m/s
+                        targetApproachSpeed = _maxSpeed > 0 ? _maxSpeed : 100.0;
+                    }
+                    else
+                    {
+                        // Close - reduce speed proportional to remaining distance
+                        // Speed where we can brake to stop within remaining distance
+                        targetApproachSpeed = Math.Sqrt(2.0 * distance * 10.0); // Assume ~10 m/s² decel
+                        targetApproachSpeed = Math.Min(targetApproachSpeed, _maxSpeed > 0 ? _maxSpeed : 100.0);
+                        targetApproachSpeed = Math.Max(targetApproachSpeed, 1.0); // Minimum 1 m/s
+                    }
+
+                    desiredVelocity = direction * targetApproachSpeed;
+                }
+                else
+                {
+                    desiredVelocity = Vector3D.Zero;
+                }
+            }
+            else
+            {
+                // Target is moving - use PID correction on top of velocity matching
+                Vector3D correction = _pid.Compute(positionError, ctx.DeltaTime);
+
+                // Safety check on PID output
+                if (!IsValid(correction))
+                {
+                    ctx.Debug?.Log($"Move: Invalid PID output (dt={ctx.DeltaTime:F4}, posErr={positionError.Length():F1})");
+                    ctx.Thrusters.Release();
+                    _pid.Reset();
+                    return;
+                }
+
+                // Desired velocity = target velocity + correction
+                desiredVelocity = targetVelocity + correction;
+            }
 
             // Apply speed limit if specified
             if (_maxSpeed > 0)
