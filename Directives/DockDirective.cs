@@ -100,9 +100,9 @@ namespace IngameScript
                 targetConnectorSize
             );
 
-            // Create AlignConnector behavior for proper orientation during docking
+            // Create AlignBlock behavior for proper orientation during docking
             // The drone connector should face OPPOSITE to the target connector (anti-parallel)
-            var dockingOrientation = new AlignConnector(
+            var dockingOrientation = new AlignBlock(
                 droneConnector,
                 () => -helpers.GetTargetConnectorForward(),  // Face opposite direction
                 () => helpers.GetTargetConnectorUp()         // Match target's up

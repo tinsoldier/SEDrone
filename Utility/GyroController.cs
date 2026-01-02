@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
+using VRage.Game.ModAPI.Ingame;
 using VRageMath;
 
 namespace IngameScript
@@ -444,18 +445,18 @@ namespace IngameScript
 
         /// <summary>
         /// Orients the grid so a specific connector faces the target direction.
-        /// Used for docking where the connector (not the ship's nose) must align.
+        /// Used for docking where a specific block (not the ship's nose) must align.
         /// </summary>
-        /// <param name="connector">The connector to align</param>
-        /// <param name="targetDirection">World direction the connector should face</param>
+        /// <param name="block">The block to align</param>
+        /// <param name="targetDirection">World direction the block should face</param>
         /// <param name="desiredUp">Desired up direction (world space)</param>
         /// <returns>True if orientation was applied</returns>
-        public bool AlignConnectorToDirection(
-            Sandbox.ModAPI.Ingame.IMyShipConnector connector,
+        public bool AlignBlockToDirection(
+            IMyCubeBlock block,
             Vector3D targetDirection,
             Vector3D desiredUp)
         {
-            if (_reference == null || _gyros.Count == 0 || connector == null)
+            if (_reference == null || _gyros.Count == 0 || block == null)
                 return false;
 
             if (targetDirection.LengthSquared() < 0.001)
@@ -466,7 +467,7 @@ namespace IngameScript
 
             // Get current orientations
             MatrixD shipMatrix = _reference.WorldMatrix;
-            MatrixD connectorMatrix = connector.WorldMatrix;
+            MatrixD connectorMatrix = block.WorldMatrix;
 
             // Get rotation from ship to connector
             MatrixD shipToConnector = connectorMatrix * MatrixD.Invert(shipMatrix);

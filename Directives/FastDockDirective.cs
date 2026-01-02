@@ -95,7 +95,7 @@ namespace IngameScript
             );
 
             // Orientation: align connector to target
-            var dockingOrientation = new AlignConnector(
+            var dockingOrientation = new AlignBlock(
                 droneConnector,
                 () => -helpers.GetTargetConnectorForward(),
                 () => ctx.Reference.WorldMatrix.Forward  // Maintain current heading

@@ -1,22 +1,23 @@
 using System;
 using Sandbox.ModAPI.Ingame;
+using VRage.Game.ModAPI.Ingame;
 using VRageMath;
 
 namespace IngameScript
 {
 
     /// <summary>
-    /// Align a specific connector on the drone to face a target direction.
-    /// Used for docking - orients the ship so the selected connector faces
+    /// Align a specific block on the drone to face a target direction.
+    /// Used for docking - orients the ship so the selected block faces
     /// opposite to the target connector's forward direction.
     /// 
     /// Inspired by SEAD2's AlignWithGravity which creates a virtual reference
     /// frame based on the connector orientation.
     /// </summary>
-    public class AlignConnector : IOrientationBehavior
+    public class AlignBlock : IOrientationBehavior
     {
-        /// <summary>The drone's connector to align.</summary>
-        public IMyShipConnector DroneConnector { get; private set; }
+        /// <summary>The drone's block to align.</summary>
+        public IMyCubeBlock Block { get; private set; }
 
         /// <summary>
         /// Function returning the direction the drone connector should face (world space).
@@ -30,30 +31,30 @@ namespace IngameScript
         /// </summary>
         public Func<Vector3D> DesiredUp { get; private set; }
 
-        public AlignConnector(
-            IMyShipConnector droneConnector, 
+        public AlignBlock(
+            IMyCubeBlock block,
             Func<Vector3D> targetDirection,
             Func<Vector3D> desiredUp = null)
         {
-            DroneConnector = droneConnector;
+            Block = block;
             TargetDirection = targetDirection;
             DesiredUp = desiredUp;
         }
 
-        public AlignConnector(
-            IMyShipConnector droneConnector,
+        public AlignBlock(
+            IMyCubeBlock block,
             Vector3D targetDirection,
             Vector3D? desiredUp = null)
         {
-            DroneConnector = droneConnector;
+            Block = block;
             TargetDirection = () => targetDirection;
             DesiredUp = desiredUp.HasValue ? (Func<Vector3D>)(() => desiredUp.Value) : null;
         }
 
         public void Execute(DroneContext ctx)
         {
-            var connector = DroneConnector;
-            if (connector == null || !connector.IsFunctional)
+            var block = Block;
+            if (block == null || !block.IsFunctional)
             {
                 ctx.Gyros.OrientLevel();
                 return;
@@ -87,7 +88,7 @@ namespace IngameScript
                 }
             }
 
-            ctx.Gyros.AlignConnectorToDirection(connector, targetDir, desiredUp);
+            ctx.Gyros.AlignBlockToDirection(block, targetDir, desiredUp);
         }
     }
 }
