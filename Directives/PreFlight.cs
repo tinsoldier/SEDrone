@@ -78,7 +78,7 @@ namespace IngameScript
             // Brief stabilization
             yield return new BehaviorIntent
             {
-                Position = new Loiter(clearPosition, ctx.Config.StationRadius),
+                Position = new Move(() => clearPosition),
                 Orientation = new StayLevel(),
                 ExitWhen = () => ctx.Velocity.Length() < 1.0
             };

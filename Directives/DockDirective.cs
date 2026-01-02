@@ -34,7 +34,7 @@ namespace IngameScript
             {
                 yield return new BehaviorIntent
                 {
-                    Position = new FormationFollow(() => ctx.GetFormationPosition()),
+                    Position = new Move(() => ctx.GetFormationPosition(), () => ctx.LastLeaderState.Velocity),
                     Orientation = new MatchLeader(),
                     ExitWhen = () => !padRequest.IsPending || !ctx.HasLeaderContact
                 };

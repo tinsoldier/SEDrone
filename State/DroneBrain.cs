@@ -272,12 +272,6 @@ namespace IngameScript
                     bool positionTypeChanged = !IsSameBehaviorType(_currentPositionBehavior, newIntent.Position);
                     bool orientationTypeChanged = !IsSameBehaviorType(_currentOrientationBehavior, newIntent.Orientation);
 
-                    // For LevelFirstApproach, reset phase when behavior instance changes
-                    if (positionTypeChanged && newIntent.Position is LevelFirstApproach)
-                    {
-                        // Phase is reset in constructor of new instance
-                    }
-
                     _currentPositionBehavior = newIntent.Position;
                     _currentOrientationBehavior = newIntent.Orientation;
                 }
@@ -563,22 +557,10 @@ namespace IngameScript
         private void UpdateStatus()
         {
             string directiveName = _currentDirective?.Name ?? "None";
-            string phase = "";
-
-            // Add approach phase info if relevant
-            var levelFirstApproach = _currentIntent?.Position as LevelFirstApproach;
-            if (levelFirstApproach != null)
-            {
-                phase = $" ({levelFirstApproach.CurrentPhase})";
-            }
-            else if (_currentIntent?.Position is FormationFollow)
-            {
-                phase = " (Formation)";
-            }
 
             if (!HasLeaderContact)
             {
-                Status = $"{directiveName}{phase} | No leader";
+                Status = $"{directiveName} | No leader";
                 return;
             }
 
@@ -588,7 +570,7 @@ namespace IngameScript
 
             string threatInfo = ProjectileCount > 0 ? $" T:{ProjectileCount}" : "";
 
-            Status = $"{directiveName}{phase} | F:{_lastDistanceToFormation:F0}m L:{distToLeader:F0}m | {speed:F0}m/s {angleOff:F1}°{threatInfo}";
+            Status = $"{directiveName} | F:{_lastDistanceToFormation:F0}m L:{distToLeader:F0}m | {speed:F0}m/s {angleOff:F1}°{threatInfo}";
         }
 
         public void Shutdown()

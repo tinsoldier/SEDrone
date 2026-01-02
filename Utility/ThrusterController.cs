@@ -644,40 +644,6 @@ namespace IngameScript
         }
 
         /// <summary>
-        /// Stops the ship by zeroing velocity (emergency brake).
-        /// </summary>
-        public void EmergencyStop()
-        {
-            if (_reference == null)
-            {
-                Release();
-                return;
-            }
-            
-            Vector3D currentVelocity = _reference.GetShipVelocities().LinearVelocity;
-            Vector3D velocityShip = WorldToShipDirection(currentVelocity);
-            Vector3D gravity = _reference.GetNaturalGravity();
-            Vector3D gravityShip = WorldToShipDirection(gravity);
-            
-            // Apply maximum braking force
-            Vector3D brakingForce = -velocityShip * _shipMass * 10; // Strong braking
-            brakingForce -= gravityShip * _shipMass * _config.VerticalAuthority;
-            brakingForce = _config.ApplyAuthority(brakingForce);
-            
-            ApplyForce(brakingForce);
-        }
-
-        /// <summary>
-        /// Gets the current speed in m/s.
-        /// </summary>
-        public double GetCurrentSpeed()
-        {
-            if (_reference == null)
-                return 0;
-            return _reference.GetShipSpeed();
-        }
-
-        /// <summary>
         /// Gets the distance to a target position.
         /// </summary>
         public double GetDistanceTo(Vector3D targetPosition)

@@ -11,9 +11,9 @@ namespace IngameScript
     /// with a single declarative directive.
     /// 
     /// Behavior:
-    /// - No leader: Loiter at current position, waiting for contact
+    /// - No leader: Hold position with Move, waiting for contact
     /// - Have leader, far from formation: Approach formation position
-    /// - Have leader, in formation: FormationFollow with velocity matching
+    /// - Have leader, in formation: Move with velocity matching
     /// - Threats detected: Face closest threat while maintaining formation
     /// </summary>
     public class EscortDirective : IDirective
@@ -39,9 +39,10 @@ namespace IngameScript
                 // === No leader contact - wait and loiter ===
                 while (!ctx.HasLeaderContact)
                 {
+                    Vector3D loiterCenter = ctx.Position;
                     yield return new BehaviorIntent
                     {
-                        Position = new Loiter(ctx.Position, 30),
+                        Position = new Move(() => loiterCenter),
                         Orientation = new StayLevel(),
                         ExitWhen = () => ctx.HasLeaderContact
                     };
@@ -83,7 +84,7 @@ namespace IngameScript
                     }
                     else
                     {
-                        // In formation - yield FormationFollow intent
+                        // In formation - yield Move intent
                         yield return new BehaviorIntent
                         {
                             //Position = new FormationFollow(ctx.Config.StationOffset),
