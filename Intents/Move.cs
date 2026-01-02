@@ -134,23 +134,6 @@ namespace IngameScript
             _maxClosingSpeed = DEFAULT_MAX_CLOSING_SPEED;
         }
 
-        /// <summary>
-        /// Move to a dynamic offset relative to a reference point.
-        /// Example: dynamic offset relative to leader for complex formations.
-        /// </summary>
-        public Move(Func<Vector3D> localOffsetFunc, Func<Vector3D> referenceFunc,
-                    Func<Vector3D> targetVelocityFunc,
-                    double maxSpeed = -1, double kp = DEFAULT_KP, double ki = DEFAULT_KI, double kd = DEFAULT_KD)
-        {
-            _targetFunc = localOffsetFunc;
-            _referenceFunc = referenceFunc;
-            _targetVelocityFunc = targetVelocityFunc;
-            _isRelative = true;
-            _pid = new PIDController3D(kp, ki, kd);
-            _maxSpeed = maxSpeed;
-            _maxClosingSpeed = DEFAULT_MAX_CLOSING_SPEED;
-        }
-
         // ============================================================
         // Formation Flying (Oriented Reference)
         // ============================================================
@@ -162,7 +145,7 @@ namespace IngameScript
         ///
         /// Example: Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState)
         /// </summary>
-        /// <param name="localOffset">Offset in leader's local space (X=right, Y=up, Z=forward)</param>
+        /// <param name="localOffset">Offset in target ref's local space (X=right, Y=up, Z=forward)</param>
         /// <param name="orientedRefFunc">Function returning the oriented reference (leader state)</param>
         /// <param name="maxSpeed">Absolute speed limit (-1 = no limit)</param>
         /// <param name="closingSpeed">Max speed to close gap with moving target (-1 = default 100 m/s)</param>

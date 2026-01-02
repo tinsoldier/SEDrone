@@ -85,7 +85,7 @@ namespace IngameScript
             double droneConnectorSize,
             double targetConnectorSize)
         {
-            double clearance = droneConnectorSize + targetConnectorSize + 0.5; // Safety margin
+            double clearance = droneConnectorSize + targetConnectorSize - 0.25; // Safety margin
 
             return new List<double>
             {
@@ -113,7 +113,7 @@ namespace IngameScript
             double droneConnectorSize,
             double targetConnectorSize)
         {
-            double clearance = droneConnectorSize + targetConnectorSize + 0.5; // Safety margin
+            double clearance = droneConnectorSize + targetConnectorSize - 0.25; // Safety margin
 
             var waypoints = new List<Vector3D>
             {
@@ -155,18 +155,6 @@ namespace IngameScript
             Vector3D dockingHeading = -connectorForward;
 
             return new DockingApproachResult(dockingPosition, dockingHeading);
-        }
-
-        /// <summary>
-        /// Converts a connector-relative offset to world position.
-        /// Helper for dynamic waypoint calculation in directives.
-        /// </summary>
-        /// <param name="connectorPosition">Connector world position</param>
-        /// <param name="offset">Offset vector from connector</param>
-        /// <returns>World position</returns>
-        public Vector3D OffsetToWorldPosition(Vector3D connectorPosition, Vector3D offset)
-        {
-            return connectorPosition + offset;
         }
 
         /// <summary>
