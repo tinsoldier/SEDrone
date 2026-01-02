@@ -6,7 +6,7 @@ using VRageMath;
 namespace IngameScript
 {
     /// <summary>
-    /// Alternative fast docking directive using a single stateless FastDock intent.
+    /// Alternative docking directive using a single stateless FastDock intent.
     ///
     /// Unlike the original FastDock directive (which yields new Move intents every tick),
     /// this directive yields a single FastDock intent that runs continuously until
@@ -15,13 +15,13 @@ namespace IngameScript
     /// The FastDock intent handles all geometry calculations and thruster control
     /// internally, similar to Spug's SEAD2 AutoLandToConnector approach.
     /// </summary>
-    public class FastDockAltDirective : IDirective
+    public class FastDockDirective : IDirective
     {
-        public string Name { get { return "FastDockAlt"; } }
+        public string Name { get { return "FastDock"; } }
 
         public IEnumerable<BehaviorIntent> Execute(DroneContext ctx)
         {
-            ctx.Debug?.Log("FastDockAlt: Starting");
+            ctx.Debug?.Log("FastDock: Starting");
 
             // === PHASE 1: Request Docking Pad ===
             PendingDockingRequest padRequest = ctx.IGCRequests.RequestDockingPad(ctx.GameTime);
@@ -60,10 +60,10 @@ namespace IngameScript
                 yield break;
             }
 
-            ctx.Debug?.Log("FastDockAlt: Got docking pad response");
+            ctx.Debug?.Log("FastDock: Got docking pad response");
 
             // === PHASE 2: Connector Selection ===
-            var helpers = new FastDockAltHelpers(ctx, padResponse, null);
+            var helpers = new FastDockHelpers(ctx, padResponse, null);
             IMyShipConnector droneConnector = ctx.DockingNav.SelectDroneConnector(
                 ctx.GridTerminalSystem,
                 ctx.Me.CubeGrid.EntityId,
@@ -78,12 +78,12 @@ namespace IngameScript
             }
 
             // Recreate helpers with drone connector
-            helpers = new FastDockAltHelpers(ctx, padResponse, droneConnector);
+            helpers = new FastDockHelpers(ctx, padResponse, droneConnector);
 
             double droneConnectorSize = DockingNavigator.GetConnectorRadius(droneConnector);
             double targetConnectorSize = padResponse.ConnectorSize;
 
-            ctx.Debug?.Log($"FastDockAlt: Connectors selected (drone={droneConnectorSize:F1}m, target={targetConnectorSize:F1}m)");
+            ctx.Debug?.Log($"FastDock: Connectors selected (drone={droneConnectorSize:F1}m, target={targetConnectorSize:F1}m)");
 
             // === PHASE 3: Create FastDock Intent ===
             // This single intent handles the entire docking sequence
@@ -103,7 +103,7 @@ namespace IngameScript
 
             // === PHASE 4: Execute Docking ===
             // Yield single intent that runs until connected or lost leader
-            ctx.Debug?.Log("FastDockAlt: Beginning docking sequence");
+            ctx.Debug?.Log("FastDock: Beginning docking sequence");
 
             yield return new BehaviorIntent
             {
@@ -115,7 +115,7 @@ namespace IngameScript
             // === PHASE 5: Handle Result ===
             if (fastDockIntent.IsConnected)
             {
-                ctx.Debug?.Log("FastDockAlt: Connected!");
+                ctx.Debug?.Log("FastDock: Connected!");
                 ctx.ActiveConnector = droneConnector;
                 ctx.SetDampeners(false);
 
@@ -141,13 +141,13 @@ namespace IngameScript
         /// <summary>
         /// Helper class for coordinate transformations.
         /// </summary>
-        private class FastDockAltHelpers
+        private class FastDockHelpers
         {
             private DroneContext _ctx;
             private DockingPadResponse _response;
             private IMyShipConnector _droneConnector;
 
-            public FastDockAltHelpers(DroneContext ctx, DockingPadResponse response, IMyShipConnector droneConnector)
+            public FastDockHelpers(DroneContext ctx, DockingPadResponse response, IMyShipConnector droneConnector)
             {
                 _ctx = ctx;
                 _response = response;
