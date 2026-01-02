@@ -214,28 +214,6 @@ namespace IngameScript
         }
 
         /// <summary>
-        /// Calculates the maximum safe speed to approach a target from a given distance.
-        /// This is the speed from which the drone can stop in exactly that distance.
-        /// Uses kinematic equation: v = sqrt(2ad)
-        /// </summary>
-        /// <param name="distance">Distance to target in meters</param>
-        /// <param name="worldApproachDirection">Direction of approach in world space</param>
-        /// <returns>Maximum safe speed in m/s</returns>
-        public double GetSafeApproachSpeed(double distance, Vector3D worldApproachDirection)
-        {
-            if (distance <= 0)
-                return 0;
-
-            double brakingAccel = GetBrakingAcceleration(worldApproachDirection);
-            
-            if (brakingAccel <= 0.01)
-                return 1; // Minimum crawl speed if no braking available
-            
-            // v = sqrt(2ad)
-            return Math.Sqrt(2 * brakingAccel * distance);
-        }
-
-        /// <summary>
         /// Rebuilds the thrust map. Call when thrusters change, config changes, 
         /// or periodically to account for atmosphere/damage.
         /// </summary>
@@ -306,85 +284,6 @@ namespace IngameScript
                     return true;
             }
             return false;
-        }
-
-        /// <summary>
-        /// Moves toward a target position with velocity matching.
-        /// This is the main method brains should call.
-        /// </summary>
-        /// <param name="targetPosition">World-space target position</param>
-        /// <param name="targetVelocity">Desired velocity to match (e.g., leader's velocity)</param>
-        /// <param name="maxSpeed">Maximum allowed speed</param>
-        /// <param name="precisionRadius">Distance at which to slow down</param>
-        public void MoveToward(Vector3D targetPosition, Vector3D targetVelocity, 
-                               double maxSpeed, double precisionRadius)
-        {
-            if (_reference == null)
-                return;
-
-            // === SAFE DEFAULT: Ensure dampeners are on before any movement ===
-            // This prevents issues when undocking or recovering from docked state
-            if (!_reference.DampenersOverride)
-            {
-                _reference.DampenersOverride = true;
-            }
-            
-            // Get current state
-            Vector3D currentPosition = _reference.GetPosition();
-            Vector3D currentVelocity = _reference.GetShipVelocities().LinearVelocity;
-            Vector3D gravity = _reference.GetNaturalGravity();
-            
-            // Transform to ship space
-            Vector3D toTarget = targetPosition - currentPosition;
-            Vector3D toTargetShip = WorldToShipDirection(toTarget);
-            Vector3D velocityShip = WorldToShipDirection(currentVelocity);
-            Vector3D gravityShip = WorldToShipDirection(gravity);
-            Vector3D targetVelocityShip = WorldToShipDirection(targetVelocity);
-            
-            double distance = toTargetShip.Length();
-            
-            // Calculate desired velocity
-            Vector3D desiredVelocity;
-            
-            if (distance < 0.5)
-            {
-                // Very close - just match target velocity
-                desiredVelocity = targetVelocityShip;
-            }
-            else
-            {
-                // Calculate safe approach speed
-                Vector3D direction = toTargetShip / distance;
-                double safeSpeed = CalculateMaxApproachSpeed(toTargetShip, gravityShip);
-                double targetSpeed = Math.Min(safeSpeed, maxSpeed);
-                
-                // Smooth approach when close
-                if (distance < precisionRadius)
-                    targetSpeed *= Math.Max(0.1, distance / precisionRadius);
-                
-                // Desired = base target velocity + correction toward position
-                desiredVelocity = targetVelocityShip + direction * targetSpeed;
-                
-                // Clamp total speed
-                double totalSpeed = desiredVelocity.Length();
-                if (totalSpeed > maxSpeed)
-                    desiredVelocity = desiredVelocity / totalSpeed * maxSpeed;
-            }
-            
-            // Calculate velocity error
-            Vector3D velocityError = desiredVelocity - velocityShip;
-            
-            // Convert to desired NET force: F = m * a
-            // This is the NET force we want (thrust + gravity combined)
-            Vector3D desiredForce = velocityError * _shipMass / _deltaTime;
-            
-            // Apply axis authority
-            // Note: Gravity compensation is now handled in ApplyForce which calculates
-            // the required thrust to achieve the desired net force
-            desiredForce = _config.ApplyAuthority(desiredForce);
-            
-            // Apply thrust (ApplyForce will account for gravity internally)
-            ApplyForce(desiredForce);
         }
 
         /// <summary>
@@ -585,41 +484,6 @@ namespace IngameScript
         }
 
         /// <summary>
-        /// Calculates the maximum safe approach speed based on stopping distance.
-        /// Uses kinematic equation: v = sqrt(2 * a * d)
-        /// </summary>
-        private double CalculateMaxApproachSpeed(Vector3D distanceVector, Vector3D gravityShipSpace)
-        {
-            if (distanceVector.LengthSquared() < 0.01) 
-                return 0;
-            
-            // Calculate available deceleration in the direction we're traveling
-            Vector3D direction = Vector3D.Normalize(distanceVector);
-            Vector3D availableThrust = GetAvailableThrust(-direction); // Opposite direction for braking
-            
-            // Account for gravity assistance/resistance
-            Vector3D thrustWithGravity = availableThrust + gravityShipSpace * _shipMass * _config.VerticalAuthority;
-            
-            // Get component of available thrust in our direction
-            double thrustInDirection = Math.Abs(
-                thrustWithGravity.X * direction.X +
-                thrustWithGravity.Y * direction.Y +
-                thrustWithGravity.Z * direction.Z
-            );
-            
-            double deceleration = thrustInDirection / _shipMass;
-            
-            if (deceleration <= 0.1) 
-                return 0.5; // Minimum crawl speed
-            
-            // v = sqrt(2 * a * d) * safety_factor
-            double distance = distanceVector.Length();
-            double maxSpeed = Math.Sqrt(2 * deceleration * distance) * _config.AccelerationFactor;
-            
-            return maxSpeed;
-        }
-
-        /// <summary>
         /// Transforms a direction vector from world space to ship-local space.
         /// </summary>
         private Vector3D WorldToShipDirection(Vector3D worldDirection)
@@ -651,14 +515,6 @@ namespace IngameScript
             if (_reference == null)
                 return double.MaxValue;
             return Vector3D.Distance(_reference.GetPosition(), targetPosition);
-        }
-
-        /// <summary>
-        /// Checks if the ship has reached a target position within tolerance.
-        /// </summary>
-        public bool HasReached(Vector3D targetPosition, double tolerance = 2.0)
-        {
-            return GetDistanceTo(targetPosition) < tolerance;
         }
     }
 }

@@ -50,40 +50,5 @@ namespace IngameScript
             // Completely degenerate - return zero to signal caller should handle
             return Vector3D.Zero;
         }
-
-        /// <summary>
-        /// Gets the "up" direction (opposite of gravity).
-        /// </summary>
-        /// <param name="gravity">The gravity vector</param>
-        /// <returns>The up vector, or Vector3D.Zero if no gravity</returns>
-        public static Vector3D GetUpFromGravity(Vector3D gravity)
-        {
-            if (gravity.LengthSquared() < 0.1)
-            {
-                return Vector3D.Zero;
-            }
-            return -Vector3D.Normalize(gravity);
-        }
-
-        /// <summary>
-        /// Calculates the compass heading (yaw angle) from a horizontal direction.
-        /// </summary>
-        /// <param name="horizontalDirection">A direction vector on the horizontal plane</param>
-        /// <param name="referenceForward">The reference "north" direction</param>
-        /// <param name="referenceRight">The reference "east" direction</param>
-        /// <returns>Angle in radians, 0 = forward, positive = clockwise</returns>
-        public static double GetCompassHeading(Vector3D horizontalDirection, Vector3D referenceForward, Vector3D referenceRight)
-        {
-            if (horizontalDirection.LengthSquared() < 0.001)
-            {
-                return 0;
-            }
-
-            Vector3D dir = Vector3D.Normalize(horizontalDirection);
-            double forward = Vector3D.Dot(dir, referenceForward);
-            double right = Vector3D.Dot(dir, referenceRight);
-            
-            return Math.Atan2(right, forward);
-        }
     }
 }

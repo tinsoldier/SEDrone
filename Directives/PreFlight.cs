@@ -85,22 +85,6 @@ namespace IngameScript
         }
 
         /// <summary>
-        /// Ensures the drone is ready for combat operations.
-        /// Includes undocking if docked, plus any combat-specific preparation.
-        /// </summary>
-        /// <param name="ctx">Drone context</param>
-        /// <param name="clearanceDistance">Distance to move away from dock</param>
-        /// <returns>Sequence of BehaviorIntents for combat preparation</returns>
-        public static IEnumerable<BehaviorIntent> EnsureCombatReady(DroneContext ctx, double clearanceDistance = DEFAULT_CLEARANCE)
-        {
-            // First, ensure undocked
-            foreach (var intent in EnsureUndocked(ctx, clearanceDistance))
-                yield return intent;
-
-            // Future: could add weapon arming, shield activation, etc.
-        }
-
-        /// <summary>
         /// Quick check to see if pre-flight is needed.
         /// Useful for directives that want to skip the foreach if not needed.
         /// </summary>
