@@ -97,36 +97,6 @@ namespace IngameScript
         }
 
         /// <summary>
-        /// Generates waypoint offsets for docking approach.
-        /// Offsets are relative to the target connector position.
-        /// Inspired by SEAD2's waypoint generation.
-        /// 
-        /// NOTE: This generates world-space vectors which become stale if the leader rotates.
-        /// Consider using GenerateApproachDistances + dynamic transformation instead.
-        /// </summary>
-        /// <param name="connectorForward">Target connector forward direction (world)</param>
-        /// <param name="droneConnectorSize">Drone connector radius</param>
-        /// <param name="targetConnectorSize">Target connector radius</param>
-        /// <returns>List of waypoint offsets (world-space directions from connector)</returns>
-        public List<Vector3D> GenerateApproachWaypoints(
-            Vector3D connectorForward,
-            double droneConnectorSize,
-            double targetConnectorSize)
-        {
-            double clearance = droneConnectorSize + targetConnectorSize - 0.25; // Safety margin
-
-            var waypoints = new List<Vector3D>
-            {
-                connectorForward * (clearance + 20),  // Far approach
-                connectorForward * (clearance + 15),  // Mid approach
-                connectorForward * (clearance + 5),   // Near approach
-                connectorForward * clearance          // Final docking position
-            };
-
-            return waypoints;
-        }
-
-        /// <summary>
         /// Calculates the final docking position and orientation.
         /// Accounts for target velocity prediction (SEAD2-inspired).
         /// </summary>

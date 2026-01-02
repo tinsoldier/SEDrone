@@ -154,32 +154,32 @@ namespace IngameScript
 
             switch (cmd)
             {
-                case "RELOAD":
-                    _config = DroneConfig.Parse(Me.CustomData);
-                    _context.Config = _config;
-                    SelectBrain();
-                    Echo("Configuration reloaded.");
-                    break;
+                // case "RELOAD":
+                //     _config = DroneConfig.Parse(Me.CustomData);
+                //     _context.Config = _config;
+                //     SelectBrain();
+                //     Echo("Configuration reloaded.");
+                //     break;
 
-                case "STATUS":
-                    Echo($"Role: {_config.Role}");
-                    Echo($"Brain: {_activeBrain?.Name ?? "None"}");
-                    Echo($"Status: {_activeBrain?.Status ?? "N/A"}");
-                    break;
+                // case "STATUS":
+                //     Echo($"Role: {_config.Role}");
+                //     Echo($"Brain: {_activeBrain?.Name ?? "None"}");
+                //     Echo($"Status: {_activeBrain?.Status ?? "N/A"}");
+                //     break;
 
-                case "STOP":
-                    _activeBrain?.Shutdown();
-                    _brainStateMachine?.Dispose();
-                    _brainStateMachine = null;
-                    Runtime.UpdateFrequency = UpdateFrequency.None;
-                    Echo("Stopped.");
-                    break;
+                // case "STOP":
+                //     _activeBrain?.Shutdown();
+                //     _brainStateMachine?.Dispose();
+                //     _brainStateMachine = null;
+                //     Runtime.UpdateFrequency = UpdateFrequency.None;
+                //     Echo("Stopped.");
+                //     break;
 
-                case "START":
-                    SelectBrain();
-                    Runtime.UpdateFrequency = UpdateFrequency.Update10;
-                    Echo("Started.");
-                    break;
+                // case "START":
+                //     SelectBrain();
+                //     Runtime.UpdateFrequency = UpdateFrequency.Update10;
+                //     Echo("Started.");
+                //     break;
 
                 case "DOCK":
                     HandleDockCommand();
@@ -227,27 +227,6 @@ namespace IngameScript
             droneBrain.SetDirective(new DockDirective());
             Echo("Switching to DOCK directive.");
             Echo("Requesting docking pad from leader...");
-        }
-
-        private void HandleFastDockCommand()
-        {
-            if (_config.Role != GridRole.Drone)
-            {
-                Echo("ERROR: FASTDOCK command only works for drones.");
-                return;
-            }
-
-            var droneBrain = _activeBrain as DroneBrain;
-            if (droneBrain == null)
-            {
-                Echo("ERROR: Drone brain not active.");
-                return;
-            }
-
-            // Switch to FastDockDirective
-            droneBrain.SetDirective(new FastDockDirective());
-            Echo("Switching to FASTDOCK directive.");
-            Echo("Using stateless docking logic (SEAD2-style)...");
         }
 
         private void HandleEscortCommand()

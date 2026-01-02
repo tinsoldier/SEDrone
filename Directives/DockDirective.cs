@@ -425,18 +425,6 @@ namespace IngameScript
                 return connectorPos + connectorForward * distance;
             }
 
-            /// <summary>
-            /// Gets world position for a pre-computed waypoint offset.
-            /// (Legacy - kept for compatibility)
-            /// </summary>
-            public Vector3D GetWaypointWorldPosition(int index, List<Vector3D> waypointOffsets)
-            {
-                if (!_ctx.HasLeaderContact) return Vector3D.Zero;
-
-                Vector3D connectorWorld = GetConnectorPosition();
-                return connectorWorld + waypointOffsets[index];
-            }
-
             public DockingApproachResult GetDockingApproach(double droneConnectorSize, double targetConnectorSize)
             {
                 return _ctx.DockingNav.CalculateDockingApproach(

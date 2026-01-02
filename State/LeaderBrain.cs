@@ -19,8 +19,6 @@ namespace IngameScript
         private string _status = "Initializing";
         private BrainContext _context;
         private IMyBroadcastListener _dockingRequestListener;
-        private IMyBroadcastListener _commandListener; // For future use
-        private double _lastBroadcastTime;
         private double _lastCleanupTime;
         private const double BROADCAST_INTERVAL = 0.1;  // 10 Hz broadcast rate
         private const double CLEANUP_INTERVAL = 5.0;    // Cleanup every 5 seconds
