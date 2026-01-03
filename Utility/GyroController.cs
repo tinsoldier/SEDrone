@@ -54,6 +54,14 @@ namespace IngameScript
         public double TotalError { get; private set; }
 
         /// <summary>
+        /// The current angular velocity magnitude in radians per second.
+        /// </summary>
+        public double AngularVelocity => Math.Sqrt(
+            _lastPitchVelocity * _lastPitchVelocity +
+            _lastYawVelocity * _lastYawVelocity +
+            _lastRollVelocity * _lastRollVelocity);
+
+        /// <summary>
         /// Whether the controller is currently aligned (within deadband).
         /// </summary>
         public bool IsAligned => TotalError < ALIGNMENT_DEADBAND;

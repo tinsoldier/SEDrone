@@ -12,7 +12,7 @@ namespace IngameScript
     /// This is a simple wrapper around threat data. More sophisticated
     /// threat analysis can be added later without changing directive code.
     /// </summary>
-    public class TacticalContext
+    public partial class TacticalContext
     {
         private List<Vector3D> _projectilePositions = new List<Vector3D>();
         private List<MyDetectedEntityInfo> _enemyTargets = new List<MyDetectedEntityInfo>();
@@ -141,6 +141,41 @@ namespace IngameScript
                     _enemyTargets.Add(target);
                 }
             }
+        }
+
+        public ITargetTelemetry GetTargetTelemetry(long entityId)
+        {
+            if (entityId == 0)
+                return null;
+
+            for (int i = 0; i < _enemyTargets.Count; i++)
+            {
+                if (_enemyTargets[i].EntityId == entityId)
+                    return new TargetTelemetry(_enemyTargets[i]);
+            }
+
+            return null;
+        }
+
+        public ITargetTelemetry GetClosestEnemyTelemetry(Vector3D fromPosition)
+        {
+            if (_enemyTargets.Count == 0)
+                return null;
+
+            MyDetectedEntityInfo closest = _enemyTargets[0];
+            double closestDistSq = Vector3D.DistanceSquared(fromPosition, closest.Position);
+
+            for (int i = 1; i < _enemyTargets.Count; i++)
+            {
+                double distSq = Vector3D.DistanceSquared(fromPosition, _enemyTargets[i].Position);
+                if (distSq < closestDistSq)
+                {
+                    closestDistSq = distSq;
+                    closest = _enemyTargets[i];
+                }
+            }
+
+            return new TargetTelemetry(closest);
         }
     }
 }

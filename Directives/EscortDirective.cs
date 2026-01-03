@@ -39,10 +39,9 @@ namespace IngameScript
                 // === No leader contact - wait and loiter ===
                 while (!ctx.HasLeaderContact)
                 {
-                    Vector3D loiterCenter = ctx.Position;
                     yield return new BehaviorIntent
                     {
-                        Position = new Move(() => loiterCenter),
+                        Position = new Move(() => ctx.Position),
                         Orientation = new StayLevel(),
                         ExitWhen = () => ctx.HasLeaderContact
                     };
@@ -52,7 +51,7 @@ namespace IngameScript
                 while (ctx.HasLeaderContact)
                 {
                     // Check if we need to approach or can hold formation
-                    bool needsApproach = ctx.HasExitedFormation() || !ctx.IsInFormation();
+                    //bool needsApproach = ctx.HasExitedFormation() || !ctx.IsInFormation();
                     bool hadThreats = ctx.Tactical.HasThreats;
                     bool leaderHasTargets = ctx.LastLeaderState.TargetEntityId != 0;
 
@@ -60,61 +59,17 @@ namespace IngameScript
                     // ctx.Debug?.Log($"Escort: approach={needsApproach} inFrm={ctx.IsInFormation()} dist={ctx.DistanceToFormation():F1}m");
                     // ctx.Debug?.Log($"  tgtVel={ctx.LastLeaderState.Velocity.Length():F1} m/s, threats={hadThreats}");
 
-                    if (needsApproach)
+                    yield return new BehaviorIntent
                     {
-                        // Determine if we should use level-first approach
-                        // (when formation is significantly above/below us)
-                        double angleToFormation = GetAngleToFormation(ctx);
-                        bool useLevelFirst = Math.Abs(angleToFormation) > LEVEL_FIRST_ANGLE_THRESHOLD;
-
-                            // Use coupled behavior - handles both position and orientation
-                            yield return new BehaviorIntent
-                            {
-                                Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState,
-                                    maxSpeed: 100),
-                                Orientation = GetFormationOrientation(ctx),  // Coupled behavior handles orientation
-                                ExitWhen = () => ctx.IsInFormation() || 
-                                    !ctx.HasLeaderContact || 
-                                    ctx.Tactical.HasThreats != hadThreats || 
-                                    (ctx.LastLeaderState.TargetEntityId != 0) != leaderHasTargets
-                            };
-                    }
-                    else
-                    {
-                        // In formation - yield Move intent
-                        yield return new BehaviorIntent
-                        {
-                            //Position = new FormationFollow(ctx.Config.StationOffset),
-                            Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
-                            Orientation = GetFormationOrientation(ctx),
-                            ExitWhen = () => ctx.HasExitedFormation() || 
-                                !ctx.HasLeaderContact || 
-                                ctx.Tactical.HasThreats != hadThreats || 
-                                (ctx.LastLeaderState.TargetEntityId != 0) != leaderHasTargets
-                        };
-                    }
+                        Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
+                        Orientation = GetFormationOrientation(ctx),
+                        ExitWhen = () => ctx.HasExitedFormation() || 
+                            !ctx.HasLeaderContact || 
+                            ctx.Tactical.HasThreats != hadThreats || 
+                            (ctx.LastLeaderState.TargetEntityId != 0) != leaderHasTargets
+                    };
                 }
             }
-        }
-
-        /// <summary>
-        /// Gets the angle (in degrees) between our forward vector and the direction to formation.
-        /// Positive = above us, Negative = below us (relative to horizon).
-        /// </summary>
-        private double GetAngleToFormation(DroneContext ctx)
-        {
-            Vector3D toFormation = ctx.GetFormationPosition() - ctx.Position;
-            if (toFormation.LengthSquared() < 1.0)
-                return 0;
-
-            toFormation.Normalize();
-            
-            // Get the vertical component (relative to gravity)
-            Vector3D up = -Vector3D.Normalize(ctx.Gravity);
-            double verticalComponent = Vector3D.Dot(toFormation, up);
-            
-            // Convert to angle in degrees
-            return Math.Asin(MathHelper.Clamp(verticalComponent, -1.0, 1.0)) * (180.0 / Math.PI);
         }
 
         /// <summary>
@@ -123,6 +78,21 @@ namespace IngameScript
         /// </summary>
         private IOrientationBehavior GetFormationOrientation(DroneContext ctx)
         {
+            var rigProvider = ctx.WeaponRigs;
+            if (rigProvider != null)
+            {
+                var rig = rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime);
+                var telemetry = ctx.Tactical.GetTargetTelemetry(ctx.LastLeaderState.TargetEntityId)
+                    ?? ctx.Tactical.GetClosestEnemyTelemetry(ctx.Position);
+
+                if (rig != null && telemetry != null && telemetry.IsValid)
+                {
+                    return new AimFixedWeapons(
+                        () => telemetry,
+                        () => rig);
+                }
+            }
+
             if (ctx.Tactical.HasThreats)
             {
                 return new FaceClosestThreat();

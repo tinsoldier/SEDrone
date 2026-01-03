@@ -8,16 +8,10 @@ namespace IngameScript
     {
         IMyCubeBlock AimBlock { get; }
         double ProjectileSpeed { get; } // 0 = hitscan
+        double MaxRange { get; } // 0 = unknown/unlimited
+        bool IsWeaponReady { get; }
         bool CanFire { get; }
         void Fire(bool enable);
-    }
-
-    public interface ITargetTelemetry
-    {
-        bool IsValid { get; }
-        Vector3D Position { get; }
-        Vector3D Velocity { get; }
-        Vector3D Acceleration { get; }
     }
 
     /// <summary>
@@ -28,25 +22,35 @@ namespace IngameScript
     {
         private readonly Func<ITargetTelemetry> _targetFunc;
         private readonly Func<IFixedWeaponRig> _weaponFunc;
-        private readonly Func<Vector3D> _desiredUpFunc;
+        private readonly bool _autoFire;
+
         private readonly int _maxLeadIterations;
         private readonly double _fireAngleDeg;
+        private readonly int _stableTicksRequired;
+        private readonly double _maxAngularRateRad;
+        private int _alignedTicks;
 
         public bool IsAligned { get; private set; }
         public double AlignmentErrorDeg { get; private set; }
+        public bool FireReady { get; private set; }
 
         public AimFixedWeapons(
             Func<ITargetTelemetry> targetFunc,
             Func<IFixedWeaponRig> weaponFunc,
-            Func<Vector3D> desiredUpFunc = null,
+            bool autoFire = true,
             int maxLeadIterations = 4,
-            double fireAngleDeg = 1.0)
+            double fireAngleDeg = 1.0,
+            int stableTicksRequired = 3,
+            double maxAngularRateRad = 0.2)
         {
             _targetFunc = targetFunc;
             _weaponFunc = weaponFunc;
-            _desiredUpFunc = desiredUpFunc;
+            _autoFire = autoFire;
+
             _maxLeadIterations = Math.Max(1, maxLeadIterations);
             _fireAngleDeg = Math.Max(0.1, fireAngleDeg);
+            _stableTicksRequired = Math.Max(1, stableTicksRequired);
+            _maxAngularRateRad = Math.Max(0.01, maxAngularRateRad);
         }
 
         public void Execute(DroneContext ctx)
@@ -57,6 +61,12 @@ namespace IngameScript
             if (weapon == null || weapon.AimBlock == null || target == null || !target.IsValid)
             {
                 IsAligned = false;
+                FireReady = false;
+                _alignedTicks = 0;
+                if (weapon != null && _autoFire)
+                {
+                    weapon.Fire(false);
+                }
                 return;
             }
 
@@ -70,12 +80,18 @@ namespace IngameScript
                 out aimDirection))
             {
                 IsAligned = false;
+                FireReady = false;
+                _alignedTicks = 0;
+                if (_autoFire)
+                {
+                    weapon.Fire(false);
+                }
                 return;
             }
 
-            Vector3D desiredUp = _desiredUpFunc != null
-                ? _desiredUpFunc()
-                : (ctx.Gravity.LengthSquared() > 0.1 ? -Vector3D.Normalize(ctx.Gravity) : ctx.WorldMatrix.Up);
+            Vector3D desiredUp = ctx.Gravity.LengthSquared() > 0.1
+                ? -Vector3D.Normalize(ctx.Gravity)
+                : ctx.WorldMatrix.Up;
 
             ctx.Gyros.AlignBlockToDirection(
                 weapon.AimBlock,
@@ -86,6 +102,16 @@ namespace IngameScript
             double dot = Vector3D.Dot(Vector3D.Normalize(blockForward), Vector3D.Normalize(aimDirection));
             AlignmentErrorDeg = Math.Acos(MathHelper.Clamp(dot, -1, 1)) * (180.0 / Math.PI);
             IsAligned = AlignmentErrorDeg <= _fireAngleDeg;
+            _alignedTicks = IsAligned ? _alignedTicks + 1 : 0;
+
+            double range = Vector3D.Distance(weapon.AimBlock.GetPosition(), target.Position);
+            bool inRange = weapon.MaxRange <= 0 || range <= weapon.MaxRange;
+            bool stable = _alignedTicks >= _stableTicksRequired;
+            bool slowEnough = ctx.Gyros.AngularVelocity <= _maxAngularRateRad;
+            FireReady = IsAligned && stable && slowEnough && weapon.IsWeaponReady && weapon.CanFire && inRange;
+            
+            if (_autoFire)
+                weapon.Fire(FireReady);
         }
 
         private static bool TryGetAimDirection(

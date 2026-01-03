@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices.ComTypes;
 using Sandbox.ModAPI.Ingame;
 using VRage;
+using VRage.Game;
 using VRageMath;
 
 namespace IngameScript
@@ -33,6 +34,7 @@ namespace IngameScript
         public ThrusterController Thrusters { get; private set; }
         public FormationNavigator Navigator { get; private set; }
         public DockingNavigator DockingNav { get; private set; }
+        public FixedWeaponRigProvider WeaponRigs { get; private set; }
         public IGCRequestManager IGCRequests { get; private set; }
         public Action<string> Echo { get { return Context != null ? Context.Echo : null; } }
         public DroneConfig Config { get { return Context.Config; } }
@@ -71,6 +73,7 @@ namespace IngameScript
         private List<Vector3D> _projectilePositions = new List<Vector3D>();
         private List<Vector3D> _tempPositions = new List<Vector3D>();
 
+        private Dictionary<MyDetectedEntityInfo, float> _tempEnemyTargets = new Dictionary<MyDetectedEntityInfo, float>();
         private Dictionary<MyDetectedEntityInfo, float> _enemyTargets = new Dictionary<MyDetectedEntityInfo, float>();
 
         public int ProjectileCount { get; private set; }
@@ -134,6 +137,7 @@ namespace IngameScript
 
             // Initialize WeaponCore APIs
             InitializeWeaponCore(context);
+            WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, _wcApi);
 
             // Set initial directive
             SetDirective(new EscortDirective());
@@ -369,7 +373,23 @@ namespace IngameScript
             }
 
             // Example: Get list of enemy targets
-            _wcApi.GetSortedThreats(PB, _enemyTargets);
+            _enemyTargets.Clear();
+            _tempEnemyTargets.Clear();
+            _wcApi.GetSortedThreats(PB, _tempEnemyTargets);
+
+            // Copy to main enemy targets dictionary if threat value is greater than zero
+            foreach(var target in _tempEnemyTargets)
+            {
+                // if(target.Key.Type == MyDetectedEntityType.CharacterHuman || target.Key.Type == MyDetectedEntityType.CharacterOther)
+                // {
+                //     Context.Echo?.Invoke($"[Drone] character target: {target.Key.Name}");
+                // }
+
+                if(target.Value > 0)
+                {
+                    _enemyTargets[target.Key] = target.Value;
+                }
+            }
 
             // if(_enemyTargets.Count > 0)
             // {
@@ -378,6 +398,30 @@ namespace IngameScript
             //     {
             //         var targetInfo = target.Key;
                     
+            //     }
+            // }
+
+            // Testing how to get all weapon blocks via WeaponCore API
+            // // 1. Get all weapon definitions first
+            // var wcDefs = new HashSet<MyDefinitionId>();
+            // _wcApi.GetAllCoreWeapons(wcDefs);
+
+            // // 2. Find all blocks on your grid with matching definitions
+            // var blocks = new List<IMyTerminalBlock>();
+            // Context.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(blocks, b => 
+            //     wcDefs.Contains(b.BlockDefinition));
+
+            // Testing GetObstructions
+            // var obstructions = new List<MyDetectedEntityInfo>();
+            // _wcApi.GetObstructions(PB, obstructions);
+
+            // if(obstructions.Count > 0)
+            // {
+            //     //Context.Echo?.Invoke($"[Drone] Obstructions detected for block {block.CustomName}: {obstructions.Count}");
+            //     foreach(var obs in obstructions)
+            //     {
+            //         var name = obs.Name.Replace("[","(").Replace("]",")");
+            //         Context.Echo?.Invoke($"name: {name} id: {obs.EntityId}");
             //     }
             // }
         }

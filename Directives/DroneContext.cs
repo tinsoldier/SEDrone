@@ -114,6 +114,11 @@ namespace IngameScript
         public DockingNavigator DockingNav => _brain.DockingNav;
 
         /// <summary>
+        /// Fixed weapon rig provider.
+        /// </summary>
+        public FixedWeaponRigProvider WeaponRigs => _brain.WeaponRigs;
+
+        /// <summary>
         /// IGC request manager for request-response patterns.
         /// </summary>
         public IGCRequestManager IGCRequests => _brain.IGCRequests;
