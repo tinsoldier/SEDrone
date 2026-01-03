@@ -15,10 +15,8 @@ namespace IngameScript
     {
         private const string API_PROPERTY_NAME = "WcPbApiBridge";
         
-        private Func<long, ICollection<Vector3D>, MyTuple<bool, int, int>> _getProjectilesLockedOnWithPositions;
         private Func<long, ICollection<Vector3D>, int> _getProjectilesLockedOnPos;
         private Action<ICollection<MyTuple<ulong, Vector3D, int, long>>> _getAllSmartProjectiles;
-        private Func<long, ICollection<MyTuple<ulong, Vector3D, int, long>>, int> _getSmartProjectilesTargetingGrid;
         private Func<bool> _isWcApiReady;
         
         /// <summary>
@@ -51,28 +49,12 @@ namespace IngameScript
         private void ApiAssign(IReadOnlyDictionary<string, Delegate> dict)
         {
             Delegate d;
-            if (dict.TryGetValue("GetProjectilesLockedOnWithPositions", out d))
-                _getProjectilesLockedOnWithPositions = d as Func<long, ICollection<Vector3D>, MyTuple<bool, int, int>>;
             if (dict.TryGetValue("GetProjectilesLockedOnPos", out d))
                 _getProjectilesLockedOnPos = d as Func<long, ICollection<Vector3D>, int>;
             if (dict.TryGetValue("GetAllSmartProjectiles", out d))
                 _getAllSmartProjectiles = d as Action<ICollection<MyTuple<ulong, Vector3D, int, long>>>;
-            if (dict.TryGetValue("GetSmartProjectilesTargetingGrid", out d))
-                _getSmartProjectilesTargetingGrid = d as Func<long, ICollection<MyTuple<ulong, Vector3D, int, long>>, int>;
             if (dict.TryGetValue("IsWcApiReady", out d))
                 _isWcApiReady = d as Func<bool>;
-        }
-
-        /// <summary>
-        /// Enhanced GetProjectilesLockedOn that also returns projectile positions.
-        /// </summary>
-        /// <param name="gridEntityId">Entity ID of the grid to check</param>
-        /// <param name="positions">Collection to populate with projectile positions</param>
-        /// <returns>Tuple: (IsLockedOn, ProjectileCount, TicksSinceUpdate)</returns>
-        public MyTuple<bool, int, int> GetProjectilesLockedOnWithPositions(long gridEntityId, ICollection<Vector3D> positions)
-        {
-            return _getProjectilesLockedOnWithPositions?.Invoke(gridEntityId, positions) 
-                   ?? new MyTuple<bool, int, int>(false, -1, -1);
         }
 
         /// <summary>
@@ -95,17 +77,6 @@ namespace IngameScript
         public void GetAllSmartProjectiles(ICollection<MyTuple<ulong, Vector3D, int, long>> collection)
         {
             _getAllSmartProjectiles?.Invoke(collection);
-        }
-
-        /// <summary>
-        /// Get smart projectiles from hostile factions targeting a specific grid.
-        /// </summary>
-        /// <param name="gridEntityId">Entity ID of the grid to check</param>
-        /// <param name="collection">Collection to populate with projectile data</param>
-        /// <returns>Number of threatening projectiles, or negative on error</returns>
-        public int GetSmartProjectilesTargetingGrid(long gridEntityId, ICollection<MyTuple<ulong, Vector3D, int, long>> collection)
-        {
-            return _getSmartProjectilesTargetingGrid?.Invoke(gridEntityId, collection) ?? -1;
         }
     }
 }

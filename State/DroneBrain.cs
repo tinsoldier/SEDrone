@@ -358,8 +358,8 @@ namespace IngameScript
         private void CheckThreatsWithPositions(long droneEntityId, long leaderEntityId)
         {
             _tempPositions.Clear();
-            int droneCount = _wcBridge.GetProjectilesLockedOnPos(droneEntityId, _tempPositions);
-            if (droneCount > 0)
+            int count = _wcBridge.GetProjectilesLockedOnPos(droneEntityId, _tempPositions);
+            if (count > 0)
             {
                 _projectilePositions.AddRange(_tempPositions);
             }
@@ -423,6 +423,7 @@ namespace IngameScript
             Thrusters.SetReference(Context.Reference);
 
             Gyros.SetMaxTilt(Config.MaxTiltAngle);
+            Gyros.SetOrientationMode(Config.OrientationMode);
 
             var massData = Context.Reference.CalculateShipMass();
             Thrusters.SetShipMass(massData.PhysicalMass);

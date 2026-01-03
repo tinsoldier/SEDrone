@@ -40,6 +40,7 @@ namespace IngameScript
 
         // === Tilt limiting ===
         private double _maxTiltAngle = DEFAULT_MAX_TILT;  // radians
+        private OrientationMode _orientationMode = OrientationMode.HorizonLock;
 
         // === PID state tracking ===
         private bool _pidActive = false;
@@ -96,6 +97,14 @@ namespace IngameScript
         public void SetMaxTilt(double degrees)
         {
             _maxTiltAngle = degrees * Math.PI / 180.0;
+        }
+
+        /// <summary>
+        /// Sets how the controller locks roll and tilt relative to gravity.
+        /// </summary>
+        public void SetOrientationMode(OrientationMode mode)
+        {
+            _orientationMode = mode;
         }
 
         /// <summary>
@@ -310,7 +319,15 @@ namespace IngameScript
             }
             else
             {
-                return ExecuteFullOrientation(desiredForward, worldUp, customUp.HasValue, currentForward, currentUp, refMatrix);
+                OrientationMode mode = (!hasGravity && !customUp.HasValue) ? OrientationMode.Free : _orientationMode;
+                bool lockRoll = customUp.HasValue || mode == OrientationMode.HorizonLock || mode == OrientationMode.Limited;
+                bool limitTilt = !customUp.HasValue && mode == OrientationMode.Limited;
+                Vector3D adjustedForward = desiredForward;
+                if (lockRoll && limitTilt)
+                {
+                    adjustedForward = ClampForwardToMaxTilt(desiredForward, worldUp, _maxTiltAngle, refMatrix.Forward);
+                }
+                return ExecuteFullOrientation(adjustedForward, worldUp, lockRoll, limitTilt, currentForward, currentUp, refMatrix);
             }
         }
 
@@ -362,7 +379,7 @@ namespace IngameScript
         /// Full 3-axis orientation: Allows pitch, yaw, and roll to reach target orientation.
         /// Used for smaller corrections or when custom up vector is specified (docking).
         /// </summary>
-        private bool ExecuteFullOrientation(Vector3D desiredForward, Vector3D worldUp, bool hasCustomUp,
+        private bool ExecuteFullOrientation(Vector3D desiredForward, Vector3D worldUp, bool lockRollToUp, bool limitTilt,
             Vector3D currentForward, Vector3D currentUp, MatrixD refMatrix)
         {
             // === Transform to local space using LookAt matrix ===
@@ -397,7 +414,7 @@ namespace IngameScript
 
             // === TILT LIMITING ===
             // Clamp pitch error to maximum tilt angle to prevent flipping
-            if (!hasCustomUp)  // Only limit tilt when using gravity reference
+            if (lockRollToUp && limitTilt)
             {
                 pitchError = MathHelper.Clamp(pitchError, -_maxTiltAngle, _maxTiltAngle);
             }
@@ -405,19 +422,11 @@ namespace IngameScript
             // === ROLL: Align with up vector (gravity or custom) ===
             // For gravity-based roll: use the fixed world up, not "perpendicular to current forward"
             // This prevents roll drift during yaw/pitch rotations
-            if (hasCustomUp)
+            if (!lockRollToUp)
             {
-                // Docking: use custom up projected perpendicular to current forward
-                Vector3D upProjected = worldUp - currentForward * Vector3D.Dot(worldUp, currentForward);
-                if (upProjected.LengthSquared() > 0.001)
-                {
-                    upProjected = Vector3D.Normalize(upProjected);
-                    double rollDot = Vector3D.Dot(currentUp, upProjected);
-                    double rollCross = Vector3D.Dot(currentForward, Vector3D.Cross(currentUp, upProjected));
-                    rollError = Math.Atan2(rollCross, rollDot);
-                }
+                rollError = 0;
             }
-            else
+            else if (lockRollToUp)
             {
                 // Normal flight: keep wings level relative to horizon (fixed world reference)
                 // Calculate roll by checking if our right axis is horizontal
@@ -441,6 +450,28 @@ namespace IngameScript
             // Apply full orientation control
             ApplyOrientationControl(pitchError, yawError, rollError);
             return true;
+        }
+
+        private Vector3D ClampForwardToMaxTilt(Vector3D forward, Vector3D worldUp, double maxTiltAngle, Vector3D fallbackForward)
+        {
+            if (maxTiltAngle <= 0)
+                return forward;
+
+            double maxSin = Math.Sin(maxTiltAngle);
+            double vertical = Vector3D.Dot(forward, worldUp);
+            double clampedVertical = MathHelper.Clamp(vertical, -maxSin, maxSin);
+
+            Vector3D horizontal = forward - worldUp * vertical;
+            if (horizontal.LengthSquared() < 0.001)
+            {
+                horizontal = fallbackForward - worldUp * Vector3D.Dot(fallbackForward, worldUp);
+            }
+            if (horizontal.LengthSquared() < 0.001)
+                return forward;
+
+            Vector3D horizontalDir = Vector3D.Normalize(horizontal);
+            double horizontalMag = Math.Sqrt(Math.Max(0, 1.0 - clampedVertical * clampedVertical));
+            return horizontalDir * horizontalMag + worldUp * clampedVertical;
         }
 
         /// <summary>

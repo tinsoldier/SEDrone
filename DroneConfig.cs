@@ -12,6 +12,13 @@ namespace IngameScript
         Leader      // Commander - broadcasts position, controls formation
     }
 
+    public enum OrientationMode
+    {
+        HorizonLock,  // Keep roll locked to horizon (on-foot style)
+        Free,         // No roll locking (jetpack style)
+        Limited       // Horizon lock with max tilt limit
+    }
+
     public class DroneConfig
     {
         // === Role Configuration ===
@@ -38,6 +45,7 @@ namespace IngameScript
         public double MinTerrainClearance { get; set; } = 10.0; // Minimum ground clearance (m)
         public double MaxTiltAngle { get; set; } = 20.0;        // Max pitch from level (degrees)
         public double BrakingSafetyMargin { get; set; } = 0.8;   // Braking distance factor (0.0-1.0)
+        public OrientationMode OrientationMode { get; set; } = OrientationMode.HorizonLock;
 
         // === Docking Parameters ===
         public double DockingApproachSpeed { get; set; } = 60.0;   // Speed during waypoint approach (m/s)
@@ -101,6 +109,8 @@ namespace IngameScript
             config.MinTerrainClearance = ini.Get("Flight", "MinTerrainClearance").ToDouble(config.MinTerrainClearance);
             config.MaxTiltAngle = ini.Get("Flight", "MaxTiltAngle").ToDouble(config.MaxTiltAngle);
             config.BrakingSafetyMargin = ini.Get("Flight", "BrakingSafetyMargin").ToDouble(config.BrakingSafetyMargin);
+            string orientationModeStr = ini.Get("Flight", "OrientationMode").ToString(config.OrientationMode.ToString());
+            config.OrientationMode = ParseOrientationMode(orientationModeStr, config.OrientationMode);
 
             // === Docking Section ===
             config.DockingApproachSpeed = ini.Get("Docking", "ApproachSpeed").ToDouble(config.DockingApproachSpeed);
@@ -172,6 +182,28 @@ namespace IngameScript
             return config;
         }
 
+        private static OrientationMode ParseOrientationMode(string value, OrientationMode fallback)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return fallback;
+
+            switch (value.Trim().ToUpperInvariant())
+            {
+                case "HORIZONLOCK":
+                case "HORIZON":
+                case "LEVEL":
+                    return OrientationMode.HorizonLock;
+                case "FREE":
+                case "JETPACK":
+                    return OrientationMode.Free;
+                case "LIMITED":
+                case "MAXTILT":
+                    return OrientationMode.Limited;
+                default:
+                    return fallback;
+            }
+        }
+
         /// <summary>
         /// Generates a default configuration template for Custom Data.
         /// </summary>
@@ -208,6 +240,8 @@ HoverAltitude=30
 MinTerrainClearance=10
 ; Maximum tilt angle from level (degrees)
 MaxTiltAngle=20
+; Orientation mode: HorizonLock, Free, or Limited
+OrientationMode=HorizonLock
 ; Braking safety margin (0.0-1.0)
 ; How much of braking distance to use as formation tolerance at speed
 ; 0.0 = tight formation (current behavior, may overshoot)
