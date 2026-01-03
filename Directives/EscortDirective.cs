@@ -54,10 +54,11 @@ namespace IngameScript
                     // Check if we need to approach or can hold formation
                     bool needsApproach = ctx.HasExitedFormation() || !ctx.IsInFormation();
                     bool hadThreats = ctx.Tactical.HasThreats;
+                    bool leaderHasTargets = ctx.LastLeaderState.TargetEntityId != 0;
 
                     // Debug logging
-                    ctx.Debug?.Log($"Escort: approach={needsApproach} inFrm={ctx.IsInFormation()} dist={ctx.DistanceToFormation():F1}m");
-                    ctx.Debug?.Log($"  tgtVel={ctx.LastLeaderState.Velocity.Length():F1} m/s, threats={hadThreats}");
+                    // ctx.Debug?.Log($"Escort: approach={needsApproach} inFrm={ctx.IsInFormation()} dist={ctx.DistanceToFormation():F1}m");
+                    // ctx.Debug?.Log($"  tgtVel={ctx.LastLeaderState.Velocity.Length():F1} m/s, threats={hadThreats}");
 
                     if (needsApproach)
                     {
@@ -72,15 +73,11 @@ namespace IngameScript
                                 Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState,
                                     maxSpeed: 100),
                                 Orientation = GetFormationOrientation(ctx),  // Coupled behavior handles orientation
-                                ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
+                                ExitWhen = () => ctx.IsInFormation() || 
+                                    !ctx.HasLeaderContact || 
+                                    ctx.Tactical.HasThreats != hadThreats || 
+                                    (ctx.LastLeaderState.TargetEntityId != 0) != leaderHasTargets
                             };
-                            // // Normal approach - dynamic target via Func<>
-                            // yield return new BehaviorIntent
-                            // {
-                            //     Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
-                            //     Orientation = GetApproachOrientation(ctx),
-                            //     ExitWhen = () => ctx.IsInFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
-                            // };
                     }
                     else
                     {
@@ -90,7 +87,10 @@ namespace IngameScript
                             //Position = new FormationFollow(ctx.Config.StationOffset),
                             Position = new Move(ctx.Config.StationOffset, () => ctx.LastLeaderState),
                             Orientation = GetFormationOrientation(ctx),
-                            ExitWhen = () => ctx.HasExitedFormation() || !ctx.HasLeaderContact || ctx.Tactical.HasThreats != hadThreats
+                            ExitWhen = () => ctx.HasExitedFormation() || 
+                                !ctx.HasLeaderContact || 
+                                ctx.Tactical.HasThreats != hadThreats || 
+                                (ctx.LastLeaderState.TargetEntityId != 0) != leaderHasTargets
                         };
                     }
                 }
@@ -115,21 +115,6 @@ namespace IngameScript
             
             // Convert to angle in degrees
             return Math.Asin(MathHelper.Clamp(verticalComponent, -1.0, 1.0)) * (180.0 / Math.PI);
-        }
-
-        /// <summary>
-        /// Determines orientation behavior while approaching.
-        /// If threats exist, face them. Otherwise, look at destination.
-        /// </summary>
-        private IOrientationBehavior GetApproachOrientation(DroneContext ctx)
-        {
-            if (ctx.Tactical.HasThreats)
-            {
-                return new FaceClosestThreat();
-            }
-
-            // Look toward formation position during approach (dynamic)
-            return new LookAt(() => ctx.GetFormationPosition());
         }
 
         /// <summary>

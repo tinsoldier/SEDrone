@@ -18,6 +18,7 @@ namespace IngameScript
         /// Current operational state description.
         /// </summary>
         string Status { get; }
+        IMyProgrammableBlock PB { get; set; }
 
         /// <summary>
         /// Initialize the brain with required dependencies.

@@ -25,6 +25,7 @@ namespace IngameScript
         // === IBrain implementation ===
         public string Name { get { return "Drone"; } }
         public string Status { get; private set; }
+        public IMyProgrammableBlock PB { get; set; }
 
         // === Context exposed to directives and executors ===
         public BrainContext Context { get; private set; }
@@ -66,12 +67,14 @@ namespace IngameScript
         // === WcPbApiBridge integration for missile interception ===
         private WcPbApiBridgeClient _wcBridge;
         private Program.WcPbApi _wcApi;
-        private bool _hasPositionTracking;
+        private bool _isProjectileTrackingEnabled;
         private List<Vector3D> _projectilePositions = new List<Vector3D>();
         private List<Vector3D> _tempPositions = new List<Vector3D>();
 
+        private Dictionary<MyDetectedEntityInfo, float> _enemyTargets = new Dictionary<MyDetectedEntityInfo, float>();
+
         public int ProjectileCount { get; private set; }
-        public bool HasPositionTracking { get { return _hasPositionTracking; } }
+        public bool ProjectileTrackingEnabled { get { return _isProjectileTrackingEnabled; } }
 
         public DroneBrain()
         {
@@ -140,42 +143,39 @@ namespace IngameScript
 
         private void InitializeWeaponCore(BrainContext context)
         {
-            _hasPositionTracking = false;
+            _isProjectileTrackingEnabled = false;
             _wcBridge = new WcPbApiBridgeClient();
+
+            _wcApi = new Program.WcPbApi();
+            try
+            {
+                if (_wcApi.Activate(context.Me))
+                {
+                    context.Echo?.Invoke("[Drone] WcPbApi connected (count/threats enabled)");
+                }
+                else
+                {
+                    _wcApi = null;
+                    context.Echo?.Invoke("[Drone] No WeaponCore API available");
+                }
+            }
+            catch
+            {
+                _wcApi = null;
+                context.Echo?.Invoke("[Drone] WeaponCore not detected");
+            }
 
             try
             {
                 if (_wcBridge.Activate(context.Me))
                 {
-                    _hasPositionTracking = true;
+                    _isProjectileTrackingEnabled = true;
                     context.Echo?.Invoke("[Drone] WcPbApiBridge connected (position tracking enabled)");
                 }
             }
             catch
             {
                 // Bridge activation failed
-            }
-
-            if (!_hasPositionTracking)
-            {
-                _wcApi = new Program.WcPbApi();
-                try
-                {
-                    if (_wcApi.Activate(context.Me))
-                    {
-                        context.Echo?.Invoke("[Drone] WcPbApi connected (count only)");
-                    }
-                    else
-                    {
-                        _wcApi = null;
-                        context.Echo?.Invoke("[Drone] No WeaponCore API available");
-                    }
-                }
-                catch
-                {
-                    _wcApi = null;
-                    context.Echo?.Invoke("[Drone] WeaponCore not detected");
-                }
             }
         }
 
@@ -339,7 +339,7 @@ namespace IngameScript
             long droneEntityId = Context.Me.CubeGrid.EntityId;
             long leaderEntityId = HasLeaderContact ? LastLeaderState.EntityId : 0;
 
-            if (_hasPositionTracking && _wcBridge != null && _wcBridge.IsReady && _wcBridge.IsWcApiReady)
+            if (_isProjectileTrackingEnabled && _wcBridge != null && _wcBridge.IsReady && _wcBridge.IsWcApiReady)
             {
                 CheckThreatsWithPositions(droneEntityId, leaderEntityId);
                 _tacticalContext.UpdateThreats(_projectilePositions);
@@ -351,25 +351,60 @@ namespace IngameScript
             }
             else
             {
-                _tacticalContext.ClearThreats();
+                _tacticalContext.ClearProjectileThreats();
             }
+
+            if (_wcApi != null)
+            {
+                CheckEnemyTargets();
+                _tacticalContext.UpdateEnemyTargets(_enemyTargets);
+            }
+        }
+
+        private void CheckEnemyTargets()
+        {
+            if(_wcApi == null)
+            {
+                return; 
+            }
+
+            // Example: Get list of enemy targets
+            _wcApi.GetSortedThreats(PB, _enemyTargets);
+
+            // if(_enemyTargets.Count > 0)
+            // {
+            //     //Context.Echo?.Invoke($"[Drone] Enemy targets detected: {_enemyTargets.Count}");
+            //     foreach(var target in _enemyTargets)
+            //     {
+            //         var targetInfo = target.Key;
+                    
+            //     }
+            // }
         }
 
         private void CheckThreatsWithPositions(long droneEntityId, long leaderEntityId)
         {
             _tempPositions.Clear();
+
+            // Get projectiles locked on the drone
+            _tacticalContext.IsDroneBeingTargetedByProjectiles = false;
             int count = _wcBridge.GetProjectilesLockedOnPos(droneEntityId, _tempPositions);
             if (count > 0)
             {
                 _projectilePositions.AddRange(_tempPositions);
+                _tacticalContext.IsDroneBeingTargetedByProjectiles = true;
             }
 
+            // Get projectiles locked on the leader
+            _tacticalContext.IsLeaderBeingTargetedByProjectiles = false;
             if (leaderEntityId != 0)
             {
                 _tempPositions.Clear();
                 int leaderCount = _wcBridge.GetProjectilesLockedOnPos(leaderEntityId, _tempPositions);
                 if (leaderCount > 0)
                 {
+                    _tacticalContext.IsLeaderBeingTargetedByProjectiles = true;
+
                     foreach (var pos in _tempPositions)
                     {
                         bool isDuplicate = false;

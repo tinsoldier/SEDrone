@@ -24,10 +24,11 @@ namespace IngameScript
 
         // === Timestamp ===
         public double Timestamp;        // Game time when message was created
+        public long TargetEntityId;     // Current focused target (0 if none)
 
         /// <summary>
         /// Serializes the message to a string for IGC transmission.
-        /// Format: EntityId|GridName|PosX|PosY|PosZ|VelX|VelY|VelZ|FwdX|FwdY|FwdZ|UpX|UpY|UpZ|LeftX|LeftY|LeftZ|Timestamp
+        /// Format: EntityId|GridName|PosX|PosY|PosZ|VelX|VelY|VelZ|FwdX|FwdY|FwdZ|UpX|UpY|UpZ|LeftX|LeftY|LeftZ|Timestamp|TargetEntityId
         /// </summary>
         public string Serialize()
         {
@@ -39,7 +40,8 @@ namespace IngameScript
                 Forward.X, Forward.Y, Forward.Z,
                 Up.X, Up.Y, Up.Z,
                 Left.X, Left.Y, Left.Z,
-                Timestamp
+                Timestamp,
+                TargetEntityId
             );
         }
 
@@ -90,6 +92,14 @@ namespace IngameScript
                     double.Parse(parts[16])
                 );
                 message.Timestamp = double.Parse(parts[17]);
+                if (parts.Length > 18)
+                {
+                    message.TargetEntityId = long.Parse(parts[18]);
+                }
+                else
+                {
+                    message.TargetEntityId = 0;
+                }
                 return true;
             }
             catch

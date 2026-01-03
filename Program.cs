@@ -139,7 +139,10 @@ namespace IngameScript
                     break;
                 case GridRole.Drone:
                 default:
-                    _activeBrain = new DroneBrain();
+                    _activeBrain = new DroneBrain()
+                    {
+                        PB = Me
+                    };
                     break;
             }
 

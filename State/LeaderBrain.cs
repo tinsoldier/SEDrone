@@ -15,6 +15,7 @@ namespace IngameScript
     {
         public string Name { get { return "Leader"; } }
         public string Status { get { return _status; } }
+        public IMyProgrammableBlock PB { get; set; }
 
         private string _status = "Initializing";
         private BrainContext _context;
@@ -25,6 +26,8 @@ namespace IngameScript
 
         // Docking pad management
         private DockingPadManager _dockingPadManager;
+        private Program.WcPbApi _wcApi;
+        private bool _hasWeaponCore;
 
         public void Initialize(BrainContext context)
         {
@@ -41,6 +44,18 @@ namespace IngameScript
                 context.Reference,
                 context.Echo
             );
+
+            // Initialize WeaponCore API (optional)
+            _wcApi = new Program.WcPbApi();
+            try
+            {
+                _hasWeaponCore = _wcApi.Activate(context.Me);
+            }
+            catch
+            {
+                _hasWeaponCore = false;
+                _wcApi = null;
+            }
 
             _status = "Initialized";
             context.Echo?.Invoke($"[{Name}] Listening for docking requests on: {dockingChannel}");
@@ -101,11 +116,28 @@ namespace IngameScript
                 Forward = matrix.Forward,
                 Up = matrix.Up,
                 Left = matrix.Left,
-                Timestamp = _context.GameTime
+                Timestamp = _context.GameTime,
+                TargetEntityId = GetFocusedTargetId()
             };
 
             // Broadcast to all listeners on the channel
             _context.IGC.SendBroadcastMessage(_context.Config.IGCChannel, message.Serialize());
+        }
+
+        private long GetFocusedTargetId()
+        {
+            if (!_hasWeaponCore || _wcApi == null)
+                return 0;
+
+            try
+            {
+                var focus = _wcApi.GetAiFocus(_context.Me.CubeGrid.EntityId, 0);
+                return focus.HasValue ? focus.Value.EntityId : 0;
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         private void ProcessDockingRequests()
