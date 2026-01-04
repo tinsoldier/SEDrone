@@ -189,15 +189,15 @@ namespace IngameScript
                 var orientedRef = _orientedRefFunc();
                 Vector3D localOffset = Target;
 
-                // Build orientation basis: Right = Up × Forward
-                Vector3D right = Vector3D.Cross(orientedRef.Up, orientedRef.Forward);
+                // Create transformation matrix from oriented reference
+                // MatrixD.CreateWorld uses (position, forward, up) and derives right via cross product
+                MatrixD refMatrix = MatrixD.CreateWorld(
+                    orientedRef.Position,
+                    orientedRef.Forward,
+                    orientedRef.Up);
 
                 // Transform local offset to world space
-                Vector3D worldOffset =
-                    right * localOffset.X +
-                    orientedRef.Up * localOffset.Y +
-                    orientedRef.Forward * localOffset.Z;
-
+                Vector3D worldOffset = Vector3D.TransformNormal(localOffset, refMatrix);
                 worldTarget = orientedRef.Position + worldOffset;
                 targetVelocity = orientedRef.Velocity;  // Automatic velocity matching
             }

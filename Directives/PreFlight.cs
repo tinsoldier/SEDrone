@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using VRageMath;
 
@@ -35,7 +36,7 @@ namespace IngameScript
                 yield break;
 
             // Store reference to connector before undocking
-            var connector = ctx.ActiveConnector;
+            var connector = ctx.ActiveConnector.OtherConnector;
 
             // Disconnect
             ctx.Undock();
@@ -44,43 +45,33 @@ namespace IngameScript
             // But let's be explicit
             ctx.SetDampeners(true);
 
-            // Calculate clearance direction (away from connector's forward)
-            // Connector forward points INTO the thing it's docking with, so we go opposite
-            Vector3D connectorForward = connector.WorldMatrix.Forward;
-            Vector3D clearDirection = -connectorForward;
+            // Calculate clearance position:
+            // 1. Move along connector's -Forward (away from dock face) in world space
+            // 2. Convert that world position to leader-local coordinates for Move intent
 
-            // If we can't determine direction, use gravity-up as fallback
-            if (clearDirection.LengthSquared() < 0.5)
+            // Step 1: Calculate world target position from connector local offset
+            Vector3D connectorLocalOffset = new Vector3D(0, 0, -clearanceDistance);
+            Vector3D worldOffset = Vector3D.TransformNormal(connectorLocalOffset, connector.WorldMatrix);
+            // Apply connector-facing offset relative to nav reference to avoid lateral jig
+            // caused by connector/reference origin or axis misalignment.
+            Vector3D targetWorld = ctx.Reference.GetPosition() + worldOffset;
+
+            // Step 2: Convert world position to leader-local coordinates
+            Vector3D worldDirection = targetWorld - ctx.LastLeaderState.Position;
+            Vector3D leaderLocalOffset = Vector3D.TransformNormal(worldDirection, MatrixD.Transpose(ctx.LastLeaderState.WorldMatrix));
+
+            Func<Vector3D> dynamicWorldTarget = () =>
             {
-                Vector3D gravity = ctx.Gravity;
-                if (gravity.LengthSquared() > 0.1)
-                {
-                    clearDirection = -Vector3D.Normalize(gravity);
-                }
-                else
-                {
-                    clearDirection = ctx.WorldMatrix.Forward;
-                }
-            }
-
-            clearDirection = Vector3D.Normalize(clearDirection);
-            Vector3D startPosition = ctx.Position;
-            Vector3D clearPosition = startPosition + clearDirection * clearanceDistance;
+                var leader = ctx.LastLeaderState;
+                return leader.Position + Vector3D.TransformNormal(leaderLocalOffset, leader.WorldMatrix);
+            };
 
             // Move to clear position
             yield return new BehaviorIntent
             {
-                Position = new Move(() => clearPosition, maxSpeed: ctx.Config.DockingApproachSpeed),
+                Position = new Move(leaderLocalOffset, () => ctx.LastLeaderState),
                 Orientation = new StayLevel(),
-                ExitWhen = () => ctx.DistanceTo(clearPosition) < 3.0
-            };
-
-            // Brief stabilization
-            yield return new BehaviorIntent
-            {
-                Position = new Move(() => clearPosition),
-                Orientation = new StayLevel(),
-                ExitWhen = () => ctx.Velocity.Length() < 1.0
+                ExitWhen = () => ctx.DistanceTo(dynamicWorldTarget()) < 3.0
             };
         }
 

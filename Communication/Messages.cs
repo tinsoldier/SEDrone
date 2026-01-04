@@ -19,12 +19,42 @@ namespace IngameScript
         public Vector3D Forward { get; set; }        // Forward direction vector
         public Vector3D Up { get; set; }             // Up direction vector
 
+        // Cached world matrix based on Position/Forward/Up
+        private MatrixD _cachedWorldMatrix;
+        private Vector3D _cachedPosition;
+        private Vector3D _cachedForward;
+        private Vector3D _cachedUp;
+        private bool _hasCachedWorldMatrix;
+
         // === Additional orientation data ===
         public Vector3D Left;           // Left direction vector (needed for SEAD2-compatible transforms)
 
         // === Timestamp ===
         public double Timestamp;        // Game time when message was created
         public long TargetEntityId;     // Current focused target (0 if none)
+
+        /// <summary>
+        /// World matrix built from Position/Forward/Up, cached until those values change.
+        /// </summary>
+        public MatrixD WorldMatrix
+        {
+            get
+            {
+                if (!_hasCachedWorldMatrix ||
+                    _cachedPosition != Position ||
+                    _cachedForward != Forward ||
+                    _cachedUp != Up)
+                {
+                    _cachedWorldMatrix = MatrixD.CreateWorld(Position, Forward, Up);
+                    _cachedPosition = Position;
+                    _cachedForward = Forward;
+                    _cachedUp = Up;
+                    _hasCachedWorldMatrix = true;
+                }
+
+                return _cachedWorldMatrix;
+            }
+        }
 
         /// <summary>
         /// Serializes the message to a string for IGC transmission.
