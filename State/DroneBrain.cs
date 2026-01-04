@@ -35,6 +35,7 @@ namespace IngameScript
         public FormationNavigator Navigator { get; private set; }
         public DockingNavigator DockingNav { get; private set; }
         public FixedWeaponRigProvider WeaponRigs { get; private set; }
+        public Program.WcPbApi WcApi { get { return _wcApi; } }
         public IGCRequestManager IGCRequests { get; private set; }
         public Action<string> Echo { get { return Context != null ? Context.Echo : null; } }
         public DroneConfig Config { get { return Context.Config; } }
@@ -127,7 +128,7 @@ namespace IngameScript
             );
 
             // Initialize tactical context
-            _tacticalContext = new TacticalContext();
+            _tacticalContext = new TacticalContext(_wcApi);
 
             // Initialize debug logger (writes to PB Echo)
             var debugLogger = new DebugLogger(context.Echo, () => context.GameTime);
@@ -137,7 +138,7 @@ namespace IngameScript
 
             // Initialize WeaponCore APIs
             InitializeWeaponCore(context);
-            WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, _wcApi);
+            WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, _wcApi, _droneContext.Debug.Log);
 
             // Set initial directive
             SetDirective(new EscortDirective());

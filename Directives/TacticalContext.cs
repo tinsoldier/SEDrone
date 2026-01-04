@@ -12,10 +12,12 @@ namespace IngameScript
     /// This is a simple wrapper around threat data. More sophisticated
     /// threat analysis can be added later without changing directive code.
     /// </summary>
-    public partial class TacticalContext
+    public class TacticalContext
     {
         private List<Vector3D> _projectilePositions = new List<Vector3D>();
         private List<MyDetectedEntityInfo> _enemyTargets = new List<MyDetectedEntityInfo>();
+        private readonly Program.WcPbApi _wcApi;
+
 
         /// <summary>
         /// Number of detected missiles/projectile threats.
@@ -43,6 +45,11 @@ namespace IngameScript
         /// </summary>
         public bool IsLeaderBeingTargetedByProjectiles { get; internal set; }
 
+        public TacticalContext(Program.WcPbApi wcApi)
+        {
+            _wcApi = wcApi;
+
+        }
 
         /// <summary>
         /// Updates threat data with positions.
@@ -151,7 +158,23 @@ namespace IngameScript
             for (int i = 0; i < _enemyTargets.Count; i++)
             {
                 if (_enemyTargets[i].EntityId == entityId)
+                {
                     return new TargetTelemetry(_enemyTargets[i]);
+                }
+            }
+
+            return null;
+        }
+
+        public ITargetTelemetry GetPredictedTargetTelemetry(long entityId, Program.WcPbApi wcApi, IMyTerminalBlock weaponBlock)
+        {
+            if (entityId == 0)
+                return null;
+
+            for (int i = 0; i < _enemyTargets.Count; i++)
+            {
+                if (_enemyTargets[i].EntityId == entityId)
+                    return new PredictedTargetTelemetry(_enemyTargets[i], wcApi, weaponBlock);
             }
 
             return null;

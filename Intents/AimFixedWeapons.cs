@@ -101,10 +101,20 @@ namespace IngameScript
             Vector3D blockForward = weapon.AimBlock.WorldMatrix.Forward;
             double dot = Vector3D.Dot(Vector3D.Normalize(blockForward), Vector3D.Normalize(aimDirection));
             AlignmentErrorDeg = Math.Acos(MathHelper.Clamp(dot, -1, 1)) * (180.0 / Math.PI);
-            IsAligned = AlignmentErrorDeg <= _fireAngleDeg;
-            _alignedTicks = IsAligned ? _alignedTicks + 1 : 0;
 
             double range = Vector3D.Distance(weapon.AimBlock.GetPosition(), target.Position);
+            double dynamicFireAngleDeg = _fireAngleDeg;
+            if (range > 0.1)
+            {
+                double maxSize = Math.Max(target.Size.X, Math.Max(target.Size.Y, target.Size.Z));
+                double halfSize = Math.Max(0.1, maxSize * 0.5);
+                double angularSizeDeg = Math.Atan(halfSize / range) * (180.0 / Math.PI);
+                dynamicFireAngleDeg = Math.Max(0.05, Math.Min(_fireAngleDeg, angularSizeDeg));
+            }
+
+            IsAligned = AlignmentErrorDeg <= dynamicFireAngleDeg;
+            _alignedTicks = IsAligned ? _alignedTicks + 1 : 0;
+
             bool inRange = weapon.MaxRange <= 0 || range <= weapon.MaxRange;
             bool stable = _alignedTicks >= _stableTicksRequired;
             bool slowEnough = ctx.Gyros.AngularVelocity <= _maxAngularRateRad;
@@ -136,17 +146,21 @@ namespace IngameScript
                 return true;
             }
 
-            Vector3D relativeVelocity = target.Velocity - shooterVelocity;
+            // Predict target position in world space
+            // Use relative velocity because projectiles inherit shooter velocity.
+            Vector3D targetVelocity = target.Velocity - shooterVelocity;
             Vector3D acceleration = target.Acceleration;
 
             double time = toTarget.Length() / projectileSpeed;
 
             for (int i = 0; i < maxIterations; i++)
             {
+                // Predict where target will be at time T (in world space)
                 Vector3D predicted = target.Position
-                    + relativeVelocity * time
+                    + targetVelocity * time
                     + 0.5 * acceleration * time * time;
 
+                // Calculate aim direction from shooter to predicted position
                 Vector3D toPredicted = predicted - shooterPos;
                 double newTime = toPredicted.Length() / projectileSpeed;
 

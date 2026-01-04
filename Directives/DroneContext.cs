@@ -119,6 +119,11 @@ namespace IngameScript
         public FixedWeaponRigProvider WeaponRigs => _brain.WeaponRigs;
 
         /// <summary>
+        /// WeaponCore PB API (may be null if unavailable).
+        /// </summary>
+        public Program.WcPbApi WcApi => _brain.WcApi;
+
+        /// <summary>
         /// IGC request manager for request-response patterns.
         /// </summary>
         public IGCRequestManager IGCRequests => _brain.IGCRequests;

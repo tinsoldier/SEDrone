@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
 namespace IngameScript
@@ -81,16 +82,18 @@ namespace IngameScript
             var rigProvider = ctx.WeaponRigs;
             if (rigProvider != null)
             {
-                var rig = rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime);
-                var telemetry = ctx.Tactical.GetTargetTelemetry(ctx.LastLeaderState.TargetEntityId)
-                    ?? ctx.Tactical.GetClosestEnemyTelemetry(ctx.Position);
-
-                if (rig != null && telemetry != null && telemetry.IsValid)
-                {
-                    return new AimFixedWeapons(
-                        () => telemetry,
-                        () => rig);
-                }
+                return new AimFixedWeapons(
+                    () =>
+                    {
+                        var rig = rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime);
+                        var weaponBlock = rig != null ? rig.AimBlock as IMyTerminalBlock : null;
+                        return ctx.Tactical.GetPredictedTargetTelemetry(ctx.LastLeaderState.TargetEntityId, ctx.WcApi, weaponBlock)
+                            ?? ctx.Tactical.GetTargetTelemetry(ctx.LastLeaderState.TargetEntityId)
+                            ?? ctx.Tactical.GetClosestEnemyTelemetry(ctx.Position);
+                            //ctx.Tactical.GetPredictedTargetTelemetry(ctx.LastLeaderState.TargetEntityId, ctx.WcApi, weaponBlock)
+                            
+                    },
+                    () => rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime));
             }
 
             if (ctx.Tactical.HasThreats)
