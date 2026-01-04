@@ -87,8 +87,7 @@ namespace IngameScript
                     {
                         var rig = rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime);
                         var weaponBlock = rig != null ? rig.AimBlock as IMyTerminalBlock : null;
-                        return ctx.Tactical.GetPredictedTargetTelemetry(ctx.LastLeaderState.TargetEntityId, ctx.WcApi, weaponBlock)
-                            ?? ctx.Tactical.GetTargetTelemetry(ctx.LastLeaderState.TargetEntityId)
+                        return ctx.Tactical.GetTargetTelemetry(ctx.LastLeaderState.TargetEntityId)
                             ?? ctx.Tactical.GetClosestEnemyTelemetry(ctx.Position);
                             //ctx.Tactical.GetPredictedTargetTelemetry(ctx.LastLeaderState.TargetEntityId, ctx.WcApi, weaponBlock)
                             

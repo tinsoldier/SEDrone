@@ -29,6 +29,7 @@ namespace IngameScript
         private readonly int _stableTicksRequired;
         private readonly double _maxAngularRateRad;
         private int _alignedTicks;
+        private long _lastTargetId;
 
         public bool IsAligned { get; private set; }
         public double AlignmentErrorDeg { get; private set; }
@@ -68,6 +69,13 @@ namespace IngameScript
                     weapon.Fire(false);
                 }
                 return;
+            }
+
+            if (_lastTargetId != target.EntityId)
+            {
+                _lastTargetId = target.EntityId;
+                _alignedTicks = 0;
+                FireReady = false;
             }
 
             Vector3D aimDirection;

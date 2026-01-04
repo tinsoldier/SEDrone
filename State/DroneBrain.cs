@@ -138,7 +138,7 @@ namespace IngameScript
 
             // Initialize WeaponCore APIs
             InitializeWeaponCore(context);
-            WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, _wcApi, _droneContext.Debug.Log);
+            WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, context.Reference, _wcApi, _droneContext.Debug.Log);
 
             // Set initial directive
             SetDirective(new EscortDirective());

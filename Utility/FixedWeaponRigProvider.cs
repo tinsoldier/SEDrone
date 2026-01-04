@@ -12,6 +12,7 @@ namespace IngameScript
 
         private readonly IMyGridTerminalSystem _gridTerminalSystem;
         private readonly long _gridEntityId;
+        private readonly IMyTerminalBlock _aimReference;
         private readonly Program.WcPbApi _wcApi;
         private readonly System.Action<string> _echo;
         private readonly List<IMyTerminalBlock> _fixedWeapons = new List<IMyTerminalBlock>();
@@ -19,10 +20,11 @@ namespace IngameScript
 
         private const double REFRESH_INTERVAL = 2.0;
 
-        public FixedWeaponRigProvider(IMyGridTerminalSystem gridTerminalSystem, IMyProgrammableBlock me, Program.WcPbApi wcApi, System.Action<string> echo = null)
+        public FixedWeaponRigProvider(IMyGridTerminalSystem gridTerminalSystem, IMyProgrammableBlock me, IMyTerminalBlock aimReference, Program.WcPbApi wcApi, System.Action<string> echo = null)
         {
             _gridTerminalSystem = gridTerminalSystem;
             _gridEntityId = me?.CubeGrid.EntityId ?? 0;
+            _aimReference = aimReference;
             _wcApi = wcApi;
             _echo = echo;
         }
@@ -41,11 +43,10 @@ namespace IngameScript
             if (_fixedWeapons.Count == 0)
                 return null;
 
-            var block = _fixedWeapons[0];
-            if (block == null || !block.IsFunctional)
+            if (_aimReference == null)
                 return null;
 
-            return new FixedWeaponRig(block, _wcApi, _echo);
+            return new CompositeFixedWeaponRig(_aimReference, _fixedWeapons, _wcApi, _echo);
         }
 
         private void Refresh()
@@ -71,42 +72,55 @@ namespace IngameScript
 
             var defs = new HashSet<MyDefinitionId>();
             _wcApi.GetAllCoreStaticLaunchers(defs);
+
+            // remove defs with "Flare" in the subtype name (these are not aimed weapons)
+            defs.RemoveWhere(d => d.SubtypeName.Contains("Flare"));
+
             _staticLauncherDefs = defs;
             return _staticLauncherDefs;
         }
 
-        private class FixedWeaponRig : IFixedWeaponRig
+        private class CompositeFixedWeaponRig : IFixedWeaponRig
         {
-            private readonly IMyTerminalBlock _weaponBlock;
+            private readonly IMyTerminalBlock _aimBlock;
+            private readonly List<IMyTerminalBlock> _weaponBlocks;
             private readonly Program.WcPbApi _wcApi;
             private readonly System.Action<string> _echo;
             private readonly HashSet<ulong> _seenProjectiles = new HashSet<ulong>();
             private bool _monitorRegistered;
 
-            public FixedWeaponRig(IMyTerminalBlock weaponBlock, Program.WcPbApi wcApi, System.Action<string> echo)
+            public CompositeFixedWeaponRig(IMyTerminalBlock aimBlock, List<IMyTerminalBlock> weaponBlocks, Program.WcPbApi wcApi, System.Action<string> echo)
             {
-                _weaponBlock = weaponBlock;
+                _aimBlock = aimBlock;
+                _weaponBlocks = weaponBlocks;
                 _wcApi = wcApi;
                 _echo = echo;
             }
 
-            public IMyCubeBlock AimBlock => _weaponBlock;
-            public double ProjectileSpeed => 2025; // TODO: wire actual projectile speed
-            public double MaxRange => _wcApi.GetMaxWeaponRange(_weaponBlock, 0);
-            public bool IsWeaponReady => _wcApi.IsWeaponReadyToFire(_weaponBlock, 0, true, false);
-            public bool CanFire => _weaponBlock != null && _weaponBlock.IsFunctional && _weaponBlock.IsWorking;
+            public IMyCubeBlock AimBlock => _aimBlock;
+            public double ProjectileSpeed => 1700; // TODO: wire actual projectile speed
+            public double MaxRange => GetMinMaxRange();
+            public bool IsWeaponReady => AnyWeaponReady();
+            public bool CanFire => AnyWeaponCanFire();
 
             public void Fire(bool enable)
             {
                 //_echo?.Invoke($"(Aim) Fire called with enable={enable}");
-                if (_weaponBlock == null)
+                if (_weaponBlocks == null || _weaponBlocks.Count == 0)
                     return;
                 // if (enable && !_monitorRegistered && _wcApi != null)
                 // {
-                //     _wcApi.MonitorProjectileCallback(_weaponBlock, 0, OnProjectileUpdate);
+                //     _wcApi.MonitorProjectileCallback(_weaponBlocks[0], 0, OnProjectileUpdate);
                 //     _monitorRegistered = true;
                 // }
-                _wcApi.ToggleWeaponFire(_weaponBlock, enable, true, 0);
+                for (int i = 0; i < _weaponBlocks.Count; i++)
+                {
+                    var block = _weaponBlocks[i];
+                    if (block != null && block.IsFunctional)
+                    {
+                        _wcApi.ToggleWeaponFire(block, enable, true, 0);
+                    }
+                }
             }
 
             // private void OnProjectileUpdate(long blockEntityId, int partId, ulong projectileId, long targetEntityId, Vector3D position, bool exists)
@@ -121,6 +135,56 @@ namespace IngameScript
             //     else
             //         _echo?.Invoke($"(Aim) End Projectile speed={speed:F1} m/s, dist to target={(position - AimBlock.GetPosition()).Length():F1} m");
             // }
+
+            private double GetMinMaxRange()
+            {
+                if (_weaponBlocks == null || _weaponBlocks.Count == 0)
+                    return 0;
+
+                double minRange = double.MaxValue;
+                for (int i = 0; i < _weaponBlocks.Count; i++)
+                {
+                    var block = _weaponBlocks[i];
+                    if (block == null || !block.IsFunctional)
+                        continue;
+
+                    double range = _wcApi.GetMaxWeaponRange(block, 0);
+                    if (range > 0 && range < minRange)
+                        minRange = range;
+                }
+
+                return minRange == double.MaxValue ? 0 : minRange;
+            }
+
+            private bool AnyWeaponReady()
+            {
+                if (_weaponBlocks == null || _weaponBlocks.Count == 0)
+                    return false;
+
+                for (int i = 0; i < _weaponBlocks.Count; i++)
+                {
+                    var block = _weaponBlocks[i];
+                    if (block == null || !block.IsFunctional)
+                        continue;
+                    if (_wcApi.IsWeaponReadyToFire(block, 0, true, false))
+                        return true;
+                }
+                return false;
+            }
+
+            private bool AnyWeaponCanFire()
+            {
+                if (_weaponBlocks == null || _weaponBlocks.Count == 0)
+                    return false;
+
+                for (int i = 0; i < _weaponBlocks.Count; i++)
+                {
+                    var block = _weaponBlocks[i];
+                    if (block != null && block.IsFunctional && block.IsWorking)
+                        return true;
+                }
+                return false;
+            }
         }
     }
 }

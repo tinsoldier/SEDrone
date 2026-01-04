@@ -6,6 +6,7 @@ namespace IngameScript
     public interface ITargetTelemetry
     {
         bool IsValid { get; }
+        long EntityId { get; }
         Vector3D Position { get; }
         Vector3D Velocity { get; }
         Vector3D Acceleration { get; }
@@ -22,6 +23,7 @@ namespace IngameScript
         }
 
         public bool IsValid => _info.EntityId != 0;
+        public long EntityId => _info.EntityId;
         public Vector3D Position => _info.BoundingBox.Center;
         public Vector3D Velocity => _info.Velocity;
         public Vector3D Acceleration => Vector3D.Zero;
@@ -42,6 +44,7 @@ namespace IngameScript
         }
 
         public bool IsValid => _info.EntityId != 0;
+        public long EntityId => _info.EntityId;
         public Vector3D Position
         {
             get
