@@ -33,15 +33,10 @@ namespace IngameScript
         /// <returns>World position where drone should be</returns>
         public Vector3D CalculateFormationPosition(LeaderStateMessage leader, Vector3D localOffset)
         {
-            // Build leader's orientation basis vectors
-            Vector3D leaderRight = Vector3D.Cross(leader.Up, leader.Forward);
+            // Rotate local offset into world space (ignore translation)
+            Vector3D worldOffset = Vector3D.TransformNormal(localOffset, leader.WorldMatrix);
 
-            // Transform offset from leader-local to world space
-            Vector3D worldOffset =
-                leaderRight * localOffset.X +
-                leader.Up * localOffset.Y +
-                leader.Forward * localOffset.Z;
-
+            // Anchor at leader position
             return leader.Position + worldOffset;
         }
 
