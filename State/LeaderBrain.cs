@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Sandbox.ModAPI.Ingame;
 
 namespace IngameScript
@@ -23,6 +24,8 @@ namespace IngameScript
         private double _lastCleanupTime;
         private const double BROADCAST_INTERVAL = 0.1;  // 10 Hz broadcast rate
         private const double CLEANUP_INTERVAL = 5.0;    // Cleanup every 5 seconds
+
+        private Dictionary<MyDetectedEntityInfo, float> _detectedEnemies = new Dictionary<MyDetectedEntityInfo, float>();
 
         // Docking pad management
         private DockingPadManager _dockingPadManager;
@@ -132,7 +135,26 @@ namespace IngameScript
             try
             {
                 var focus = _wcApi.GetAiFocus(_context.Me.CubeGrid.EntityId, 0);
-                return focus.HasValue ? focus.Value.EntityId : 0;
+                //return focus.HasValue ? focus.Value.EntityId : 0;
+                //if focus has a valid value, return that, otherwise call GetSortedThreats and return the top threat, set that as the focus
+                if (focus.HasValue && focus.Value.EntityId != 0)
+                {
+                    _context.Echo?.Invoke($"(Leader) Current focus targetId={focus.Value.EntityId}");
+                    return focus.Value.EntityId;
+                }
+                else
+                {
+                    _context.Echo?.Invoke($"(Leader) Scanning for threats");
+                    _wcApi.GetSortedThreats(PB, _detectedEnemies);
+                    if (_detectedEnemies.Count > 0)
+                    {
+                        var entityId = _detectedEnemies.Keys.First().EntityId;
+                        _wcApi.SetAiFocus(_context.Me, entityId, 0);
+                        return entityId;
+                    }
+                    else
+                        return 0;
+                }
             }
             catch
             {

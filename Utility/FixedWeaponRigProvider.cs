@@ -49,6 +49,23 @@ namespace IngameScript
             return new CompositeFixedWeaponRig(_aimReference, _fixedWeapons, _wcApi, _echo);
         }
 
+        public IMyTerminalBlock GetPrimaryWeaponBlock(double gameTime)
+        {
+            if (_wcApi == null || _gridEntityId == 0)
+                return null;
+
+            if ((gameTime - _lastRefreshTime) > REFRESH_INTERVAL || _fixedWeapons.Count == 0)
+            {
+                Refresh();
+                _lastRefreshTime = gameTime;
+            }
+
+            if (_fixedWeapons.Count == 0)
+                return null;
+
+            return _fixedWeapons[0];
+        }
+
         private void Refresh()
         {
             _fixedWeapons.Clear();
@@ -80,14 +97,16 @@ namespace IngameScript
             return _staticLauncherDefs;
         }
 
-        private class CompositeFixedWeaponRig : IFixedWeaponRig
+        public class CompositeFixedWeaponRig : IFixedWeaponRig
         {
             private readonly IMyTerminalBlock _aimBlock;
-            private readonly List<IMyTerminalBlock> _weaponBlocks;
+            public readonly List<IMyTerminalBlock> _weaponBlocks;
             private readonly Program.WcPbApi _wcApi;
             private readonly System.Action<string> _echo;
             private readonly HashSet<ulong> _seenProjectiles = new HashSet<ulong>();
             private bool _monitorRegistered;
+            private bool? _lastFireState;
+            private double? _cachedMaxRange;
 
             public CompositeFixedWeaponRig(IMyTerminalBlock aimBlock, List<IMyTerminalBlock> weaponBlocks, Program.WcPbApi wcApi, System.Action<string> echo)
             {
@@ -99,7 +118,7 @@ namespace IngameScript
 
             public IMyCubeBlock AimBlock => _aimBlock;
             public double ProjectileSpeed => 1700; // TODO: wire actual projectile speed
-            public double MaxRange => GetMinMaxRange();
+            public double MaxRange => GetCachedMaxRange();
             public bool IsWeaponReady => AnyWeaponReady();
             public bool CanFire => AnyWeaponCanFire();
 
@@ -108,6 +127,9 @@ namespace IngameScript
                 //_echo?.Invoke($"(Aim) Fire called with enable={enable}");
                 if (_weaponBlocks == null || _weaponBlocks.Count == 0)
                     return;
+                if (_lastFireState.HasValue && _lastFireState.Value == enable)
+                    return;
+                _lastFireState = enable;
                 // if (enable && !_monitorRegistered && _wcApi != null)
                 // {
                 //     _wcApi.MonitorProjectileCallback(_weaponBlocks[0], 0, OnProjectileUpdate);
@@ -136,10 +158,16 @@ namespace IngameScript
             //         _echo?.Invoke($"(Aim) End Projectile speed={speed:F1} m/s, dist to target={(position - AimBlock.GetPosition()).Length():F1} m");
             // }
 
-            private double GetMinMaxRange()
+            private double GetCachedMaxRange()
             {
+                if (_cachedMaxRange.HasValue)
+                    return _cachedMaxRange.Value;
+
                 if (_weaponBlocks == null || _weaponBlocks.Count == 0)
+                {
+                    _cachedMaxRange = 0;
                     return 0;
+                }
 
                 double minRange = double.MaxValue;
                 for (int i = 0; i < _weaponBlocks.Count; i++)
@@ -153,7 +181,8 @@ namespace IngameScript
                         minRange = range;
                 }
 
-                return minRange == double.MaxValue ? 0 : minRange;
+                _cachedMaxRange = minRange == double.MaxValue ? 0 : minRange;
+                return _cachedMaxRange.Value;
             }
 
             private bool AnyWeaponReady()

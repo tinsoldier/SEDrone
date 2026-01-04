@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.Remoting.Channels;
 using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
@@ -85,12 +86,12 @@ namespace IngameScript
                 return new AimFixedWeapons(
                     () =>
                     {
-                        var rig = rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime);
-                        var weaponBlock = rig != null ? rig.AimBlock as IMyTerminalBlock : null;
-                        return ctx.Tactical.GetTargetTelemetry(ctx.LastLeaderState.TargetEntityId)
+                        var weaponBlock = rigProvider.GetPrimaryWeaponBlock(ctx.GameTime);
+                        return ctx.Tactical.GetTargetTelemetry(ctx.LastLeaderState.TargetEntityId, weaponBlock)
                             ?? ctx.Tactical.GetClosestEnemyTelemetry(ctx.Position);
-                            //ctx.Tactical.GetPredictedTargetTelemetry(ctx.LastLeaderState.TargetEntityId, ctx.WcApi, weaponBlock)
-                            
+                        // return ctx.Tactical.GetPredictedTargetTelemetry(ctx.LastLeaderState.TargetEntityId, ctx.WcApi, weaponBlock)
+                        //     ?? ctx.Tactical.GetTargetTelemetry(ctx.LastLeaderState.TargetEntityId, weaponBlock)
+                        //     ?? ctx.Tactical.GetClosestEnemyTelemetry(ctx.Position);
                     },
                     () => rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime));
             }

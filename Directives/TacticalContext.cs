@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
+using Sandbox.ModAPI.Interfaces;
 using VRageMath;
 
 namespace IngameScript
@@ -16,6 +17,7 @@ namespace IngameScript
     {
         private List<Vector3D> _projectilePositions = new List<Vector3D>();
         private List<MyDetectedEntityInfo> _enemyTargets = new List<MyDetectedEntityInfo>();
+        private long _lastWeaponTargetId;
         private readonly Program.WcPbApi _wcApi;
 
 
@@ -44,11 +46,13 @@ namespace IngameScript
         /// Whether the leader is currently being targeted by projectiles.
         /// </summary>
         public bool IsLeaderBeingTargetedByProjectiles { get; internal set; }
+        public Action<string> Echo { get; }
 
-        public TacticalContext(Program.WcPbApi wcApi)
+
+        public TacticalContext(Program.WcPbApi wcApi, Action<string> echo)
         {
             _wcApi = wcApi;
-
+            Echo = echo;
         }
 
         /// <summary>
@@ -164,6 +168,51 @@ namespace IngameScript
             }
 
             return null;
+        }
+
+        public ITargetTelemetry GetTargetTelemetry(long entityId, IMyTerminalBlock weaponBlock)
+        {
+            Echo?.Invoke($"(Tactical) GetTargetTelemetry for entityId={entityId}");
+
+            if (entityId == 0)
+                return null;
+
+            if (_wcApi != null && weaponBlock != null)
+            {
+                if (_lastWeaponTargetId != entityId)
+                {
+                    Echo?.Invoke($"(Tactical) Setting weapon focus to entityId={entityId}");
+                    weaponBlock.SetValue("WC_FocusFire", true);
+                    _wcApi.SetAiFocus(weaponBlock, entityId, 0);
+                    _lastWeaponTargetId = entityId;
+                }
+
+                var weaponTarget = _wcApi.GetAiFocus(weaponBlock.CubeGrid.EntityId, 0);
+                if (weaponTarget.HasValue && weaponTarget.Value.EntityId != 0)
+                {
+                    //check if target has a valid position and velocity
+                    if(weaponTarget.Value.Position == Vector3D.Zero)
+                    {
+                        Echo?.Invoke($"(Tactical) target position invalid");
+                        return null;
+                    }
+                    Echo?.Invoke($"(Tactical) Found valid target");
+                    return new TargetTelemetry(weaponTarget.Value);
+                }
+                else
+                {
+                    Echo?.Invoke($"(Tactical) target not found");
+                }
+            }
+            else
+            {
+                if(weaponBlock == null)
+                    Echo?.Invoke($"(Tactical) Weapon block is null");
+                if(_wcApi == null)
+                    Echo?.Invoke($"(Tactical) WC API is null");
+            }
+
+            return GetTargetTelemetry(entityId);
         }
 
         public ITargetTelemetry GetPredictedTargetTelemetry(long entityId, Program.WcPbApi wcApi, IMyTerminalBlock weaponBlock)

@@ -126,9 +126,12 @@ namespace IngameScript
                 context.Config.IGCChannel,
                 context.Echo
             );
+            
+            // Initialize WeaponCore APIs
+            InitializeWeaponCore(context);
 
             // Initialize tactical context
-            _tacticalContext = new TacticalContext(_wcApi);
+            _tacticalContext = new TacticalContext(_wcApi, context.Echo);
 
             // Initialize debug logger (writes to PB Echo)
             var debugLogger = new DebugLogger(context.Echo, () => context.GameTime);
@@ -136,8 +139,6 @@ namespace IngameScript
             // Initialize drone context (passed to directives)
             _droneContext = new DroneContext(this, _tacticalContext, debugLogger);
 
-            // Initialize WeaponCore APIs
-            InitializeWeaponCore(context);
             WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, context.Reference, _wcApi, _droneContext.Debug.Log);
 
             // Set initial directive
@@ -376,7 +377,7 @@ namespace IngameScript
             // Example: Get list of enemy targets
             _enemyTargets.Clear();
             _tempEnemyTargets.Clear();
-            _wcApi.GetSortedThreats(PB, _tempEnemyTargets);
+            // _wcApi.GetSortedThreats(PB, _tempEnemyTargets);
 
             // Copy to main enemy targets dictionary if threat value is greater than zero
             foreach(var target in _tempEnemyTargets)

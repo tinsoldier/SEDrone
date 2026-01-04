@@ -22,6 +22,11 @@ namespace IngameScript
         private const double TICKS_PER_SECOND_1 = 1.0;
         private const double TICKS_PER_SECOND_10 = 1.0 / 6.0;   // ~0.167s
         private const double TICKS_PER_SECOND_100 = 1.0 / 60.0; // ~0.0167s
+        private double _perfWindowStart;
+        private int _perfSampleCount;
+        private double _perfSumMs;
+        private double _perfMinMs = double.MaxValue;
+        private double _perfMaxMs;
 
         public Program()
         {
@@ -118,8 +123,32 @@ namespace IngameScript
                 }
             }
 
+            UpdatePerfStats();
+
             // Status display
             //DisplayStatus();
+        }
+
+        private void UpdatePerfStats()
+        {
+            double sample = Runtime.LastRunTimeMs;
+            _perfSumMs += sample;
+            _perfSampleCount++;
+            _perfMinMs = Math.Min(_perfMinMs, sample);
+            _perfMaxMs = Math.Max(_perfMaxMs, sample);
+
+            double elapsed = _context.GameTime - _perfWindowStart;
+            if (elapsed < 1.0)
+                return;
+
+            double avg = _perfSampleCount > 0 ? _perfSumMs / _perfSampleCount : 0;
+            _context.Echo?.Invoke($"[Perf] avg={avg:F3} ms min={_perfMinMs:F3} ms max={_perfMaxMs:F3} ms");
+
+            _perfWindowStart = _context.GameTime;
+            _perfSampleCount = 0;
+            _perfSumMs = 0;
+            _perfMinMs = double.MaxValue;
+            _perfMaxMs = 0;
         }
 
         private void SelectBrain()
