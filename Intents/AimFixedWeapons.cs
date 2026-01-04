@@ -30,6 +30,7 @@ namespace IngameScript
         private readonly double _maxAngularRateRad;
         private int _alignedTicks;
         private long _lastTargetId;
+        private bool _wasAligned;
 
         public bool IsAligned { get; private set; }
         public double AlignmentErrorDeg { get; private set; }
@@ -120,16 +121,25 @@ namespace IngameScript
                 dynamicFireAngleDeg = Math.Max(0.05, Math.Min(_fireAngleDeg, angularSizeDeg));
             }
 
-            IsAligned = AlignmentErrorDeg <= dynamicFireAngleDeg;
+            double alignedThreshold = dynamicFireAngleDeg;
+            if (_wasAligned)
+            {
+                alignedThreshold *= 1.5;
+            }
+            IsAligned = AlignmentErrorDeg <= alignedThreshold;
             _alignedTicks = IsAligned ? _alignedTicks + 1 : 0;
+            _wasAligned = IsAligned;
 
             bool inRange = weapon.MaxRange <= 0 || range <= weapon.MaxRange;
             bool stable = _alignedTicks >= _stableTicksRequired;
             bool slowEnough = ctx.Gyros.AngularVelocity <= _maxAngularRateRad;
-            FireReady = IsAligned && stable && slowEnough && weapon.IsWeaponReady && weapon.CanFire && inRange;
+            FireReady = IsAligned && stable && slowEnough && weapon.IsWeaponReady && weapon.CanFire && inRange ;
             
             if (_autoFire)
+            {
+                ctx.Debug.Log($"(Aim) aligned={IsAligned}, stable={stable}, slowEnough={slowEnough}, inRange={inRange}, => FireReady={FireReady}");
                 weapon.Fire(FireReady);
+            }
         }
 
         private static bool TryGetAimDirection(

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
+using Sandbox.ModAPI.Interfaces;
 using VRage.Game;
 using VRage.Game.ModAPI.Ingame;
 using VRageMath;
@@ -9,7 +10,7 @@ namespace IngameScript
     public class FixedWeaponRigProvider
     {
         private static HashSet<MyDefinitionId> _staticLauncherDefs;
-
+        private readonly IMyProgrammableBlock _pb;
         private readonly IMyGridTerminalSystem _gridTerminalSystem;
         private readonly long _gridEntityId;
         private readonly IMyTerminalBlock _aimReference;
@@ -22,6 +23,7 @@ namespace IngameScript
 
         public FixedWeaponRigProvider(IMyGridTerminalSystem gridTerminalSystem, IMyProgrammableBlock me, IMyTerminalBlock aimReference, Program.WcPbApi wcApi, System.Action<string> echo = null)
         {
+            _pb = me;
             _gridTerminalSystem = gridTerminalSystem;
             _gridEntityId = me?.CubeGrid.EntityId ?? 0;
             _aimReference = aimReference;
@@ -64,6 +66,25 @@ namespace IngameScript
                 return null;
 
             return _fixedWeapons[0];
+        }
+
+        public void StopAllWeapons()
+        {
+            if (_wcApi == null || _fixedWeapons.Count == 0)
+                return;
+                    
+            //_wcApi.ReleaseAiFocus(_pb, 0);
+
+            for (int i = 0; i < _fixedWeapons.Count; i++)
+            {
+                var block = _fixedWeapons[i];
+                if (block != null && block.IsFunctional)
+                {
+                    //_wcApi.ToggleWeaponFire(block, false, true, 0);
+                    block.SetValue("WC_FocusFire", false);
+                    block.SetValue("WC_Shoot", false);
+                }
+            }
         }
 
         private void Refresh()
@@ -127,20 +148,23 @@ namespace IngameScript
                 //_echo?.Invoke($"(Aim) Fire called with enable={enable}");
                 if (_weaponBlocks == null || _weaponBlocks.Count == 0)
                     return;
-                if (_lastFireState.HasValue && _lastFireState.Value == enable)
-                    return;
+                // if (enable && _lastFireState.HasValue && _lastFireState.Value == enable)
+                //     return;
                 _lastFireState = enable;
                 // if (enable && !_monitorRegistered && _wcApi != null)
                 // {
                 //     _wcApi.MonitorProjectileCallback(_weaponBlocks[0], 0, OnProjectileUpdate);
                 //     _monitorRegistered = true;
                 // }
+                //_echo?.Invoke($"(Aim) Setting fire={enable}");
                 for (int i = 0; i < _weaponBlocks.Count; i++)
                 {
                     var block = _weaponBlocks[i];
                     if (block != null && block.IsFunctional)
                     {
-                        _wcApi.ToggleWeaponFire(block, enable, true, 0);
+                        //_wcApi.ToggleWeaponFire(block, enable, true, 0);
+                        block.SetValue("WC_FocusFire", enable);
+                        block.SetValue("WC_Shoot", enable);
                     }
                 }
             }

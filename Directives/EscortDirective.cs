@@ -81,7 +81,7 @@ namespace IngameScript
         private IOrientationBehavior GetFormationOrientation(DroneContext ctx)
         {
             var rigProvider = ctx.WeaponRigs;
-            if (rigProvider != null)
+            if (rigProvider != null && ctx.LastLeaderState.TargetEntityId > 0)
             {
                 return new AimFixedWeapons(
                     () =>
@@ -94,6 +94,10 @@ namespace IngameScript
                         //     ?? ctx.Tactical.GetClosestEnemyTelemetry(ctx.Position);
                     },
                     () => rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime));
+            }
+            else if (rigProvider != null)
+            {
+                rigProvider.StopAllWeapons();
             }
 
             if (ctx.Tactical.HasThreats)

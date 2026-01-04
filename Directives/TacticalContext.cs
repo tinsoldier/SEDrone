@@ -181,7 +181,7 @@ namespace IngameScript
             {
                 if (_lastWeaponTargetId != entityId)
                 {
-                    Echo?.Invoke($"(Tactical) Setting weapon focus to entityId={entityId}");
+                    //Echo?.Invoke($"(Tactical) Setting weapon focus to entityId={entityId}");
                     weaponBlock.SetValue("WC_FocusFire", true);
                     _wcApi.SetAiFocus(weaponBlock, entityId, 0);
                     _lastWeaponTargetId = entityId;
@@ -193,23 +193,23 @@ namespace IngameScript
                     //check if target has a valid position and velocity
                     if(weaponTarget.Value.Position == Vector3D.Zero)
                     {
-                        Echo?.Invoke($"(Tactical) target position invalid");
+                        ////Echo?.Invoke($"(Tactical) target position invalid");
                         return null;
                     }
-                    Echo?.Invoke($"(Tactical) Found valid target");
+                    //Echo?.Invoke($"(Tactical) Found valid target");
                     return new TargetTelemetry(weaponTarget.Value);
                 }
                 else
                 {
-                    Echo?.Invoke($"(Tactical) target not found");
+                    //Echo?.Invoke($"(Tactical) target not found");
                 }
             }
             else
             {
-                if(weaponBlock == null)
-                    Echo?.Invoke($"(Tactical) Weapon block is null");
-                if(_wcApi == null)
-                    Echo?.Invoke($"(Tactical) WC API is null");
+                //if(weaponBlock == null)
+                    //Echo?.Invoke($"(Tactical) Weapon block is null");
+                //if(_wcApi == null)
+                    //Echo?.Invoke($"(Tactical) WC API is null");
             }
 
             return GetTargetTelemetry(entityId);
