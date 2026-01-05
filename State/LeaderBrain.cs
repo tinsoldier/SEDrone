@@ -46,6 +46,15 @@ namespace IngameScript
             string dockingChannel = context.Config.IGCChannel + "_DOCK_REQUEST";
             _dockingRequestListener = context.IGC.RegisterBroadcastListener(dockingChannel);
 
+            if (_context.CommandBus == null)
+            {
+                _context.CommandBus = new IgcCommandBus(context.IGC, context.Config.IGCChannel + "_COMMAND");
+            }
+            if (_context.LeaderStateBus == null)
+            {
+                _context.LeaderStateBus = new IgcStateBus(context.IGC, context.Config.IGCChannel);
+            }
+
             // Initialize docking pad manager
             _dockingPadManager = new DockingPadManager(
                 context.GridTerminalSystem,
@@ -127,6 +136,12 @@ namespace IngameScript
                 Timestamp = _context.GameTime,
                 TargetEntityId = GetFocusedTargetId()
             };
+
+            if (_context.LeaderStateBus != null)
+            {
+                _context.LeaderStateBus.Publish(message);
+                return;
+            }
 
             // Broadcast to all listeners on the channel
             _context.IGC.SendBroadcastMessage(_context.Config.IGCChannel, message.Serialize());

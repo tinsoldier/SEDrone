@@ -54,6 +54,8 @@ namespace IngameScript
                 Config = _config,
                 Reference = _reference,
                 GridId = _reference.CubeGrid.EntityId,
+                CommandBus = new IgcCommandBus(IGC, _config.IGCChannel + "_COMMAND"),
+                LeaderStateBus = new IgcStateBus(IGC, _config.IGCChannel),
                 Echo = Echo,
                 GameTime = 0,
                 DeltaTime = GetDeltaTime()
@@ -334,6 +336,12 @@ namespace IngameScript
                 Command = command,
                 Timestamp = _context.GameTime
             };
+
+            if (_context.CommandBus != null)
+            {
+                _context.CommandBus.Publish(message);
+                return;
+            }
 
             string channel = _config.IGCChannel + "_COMMAND";
             IGC.SendBroadcastMessage(channel, message.Serialize());

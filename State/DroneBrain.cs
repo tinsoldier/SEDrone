@@ -45,8 +45,6 @@ namespace IngameScript
         public LeaderStateMessage LastLeaderState { get; private set; }
         public bool HasLeaderContact { get; private set; }
 
-        private IMyBroadcastListener _listener;
-        private IMyBroadcastListener _commandListener;
         private double _lastContactTime;
         private const double CONTACT_TIMEOUT = 2.0;
 
@@ -96,9 +94,14 @@ namespace IngameScript
                     : Context.Me.CubeGrid.EntityId;
             }
 
-            // Register for IGC broadcasts
-            _listener = context.IGC.RegisterBroadcastListener(context.Config.IGCChannel);
-            _commandListener = context.IGC.RegisterBroadcastListener(context.Config.IGCChannel + "_COMMAND");
+            if (context.CommandBus == null)
+            {
+                context.CommandBus = new IgcCommandBus(context.IGC, context.Config.IGCChannel + "_COMMAND");
+            }
+            if (context.LeaderStateBus == null)
+            {
+                context.LeaderStateBus = new IgcStateBus(context.IGC, context.Config.IGCChannel);
+            }
 
             if (context.Hardware == null)
             {
@@ -530,20 +533,12 @@ namespace IngameScript
         private void ProcessMessages()
         {
             // Process leader state messages
-            while (_listener.HasPendingMessage)
+            LeaderStateMessage leaderState;
+            if (Context.LeaderStateBus != null && Context.LeaderStateBus.TryGetLatest(out leaderState))
             {
-                var msg = _listener.AcceptMessage();
-                var data = msg.Data as string;
-                if (data != null)
-                {
-                    LeaderStateMessage leaderState;
-                    if (LeaderStateMessage.TryParse(data, out leaderState))
-                    {
-                        LastLeaderState = leaderState;
-                        HasLeaderContact = true;
-                        _lastContactTime = Context.GameTime;
-                    }
-                }
+                LastLeaderState = leaderState;
+                HasLeaderContact = true;
+                _lastContactTime = Context.GameTime;
             }
 
             // Process command messages from leader
@@ -561,22 +556,17 @@ namespace IngameScript
         /// </summary>
         private void ProcessCommandMessages()
         {
-            while (_commandListener.HasPendingMessage)
+            if (Context.CommandBus == null)
+                return;
+
+            DroneCommandMessage command;
+            while (Context.CommandBus.TryDequeue(out command))
             {
-                var msg = _commandListener.AcceptMessage();
-                var data = msg.Data as string;
-                if (data != null)
+                // Check if command is for us (or broadcast to all)
+                long myEntityId = Context.GridId;
+                if (command.TargetDroneId == 0 || command.TargetDroneId == myEntityId)
                 {
-                    DroneCommandMessage command;
-                    if (DroneCommandMessage.TryParse(data, out command))
-                    {
-                        // Check if command is for us (or broadcast to all)
-                        long myEntityId = Context.GridId;
-                        if (command.TargetDroneId == 0 || command.TargetDroneId == myEntityId)
-                        {
-                            ExecuteCommand(command.Command);
-                        }
-                    }
+                    ExecuteCommand(command.Command);
                 }
             }
         }

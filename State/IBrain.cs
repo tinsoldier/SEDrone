@@ -73,5 +73,9 @@ namespace IngameScript
 
         // === Status Output ===
         public System.Action<string> Echo { get; set; }
+
+        // === Shared Messaging ===
+        public ICommandBus CommandBus { get; set; }
+        public IStateBus<LeaderStateMessage> LeaderStateBus { get; set; }
     }
 }
