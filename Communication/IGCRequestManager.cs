@@ -16,6 +16,9 @@ namespace IngameScript
         private readonly string _requestChannel;
         private readonly string _responseChannel;
         private readonly Action<string> _echo;
+        private readonly long _droneEntityId;
+        private readonly string _droneGridName;
+        private readonly DockingPadManager _localDockingManager;
 
         private long _nextRequestId = 1;
         private Dictionary<long, PendingRequest> _pendingRequests = new Dictionary<long, PendingRequest>();
@@ -34,18 +37,32 @@ namespace IngameScript
             IMyIntergridCommunicationSystem igc,
             IMyProgrammableBlock me,
             string baseChannel,
-            Action<string> echo = null)
+            Action<string> echo = null,
+            long droneEntityId = 0,
+            string droneGridName = null,
+            DockingPadManager localDockingManager = null)
         {
             _igc = igc;
             _me = me;
             _requestChannel = baseChannel + "_DOCK_REQUEST";
             _responseChannel = baseChannel + "_DOCK_RESPONSE";
             _echo = echo;
+            _droneEntityId = droneEntityId != 0 ? droneEntityId : (_me != null ? _me.CubeGrid.EntityId : 0);
+            _droneGridName = !string.IsNullOrEmpty(droneGridName)
+                ? droneGridName
+                : (_me != null ? _me.CubeGrid.CustomName : "");
+            _localDockingManager = localDockingManager;
 
             // Register listener for responses
-            _responseListener = _igc.RegisterBroadcastListener(_responseChannel);
-
-            _echo?.Invoke($"[IGC] Request manager initialized. Request:{_requestChannel} Response:{_responseChannel}");
+            if (_igc != null && _localDockingManager == null)
+            {
+                _responseListener = _igc.RegisterBroadcastListener(_responseChannel);
+                _echo?.Invoke($"[IGC] Request manager initialized. Request:{_requestChannel} Response:{_responseChannel}");
+            }
+            else if (_localDockingManager != null)
+            {
+                _echo?.Invoke("[IGC] Request manager initialized (local docking)");
+            }
         }
 
         /// <summary>
@@ -58,15 +75,32 @@ namespace IngameScript
 
             var request = new DockingPadRequest
             {
-                DroneEntityId = _me.CubeGrid.EntityId,
-                DroneGridName = _me.CubeGrid.CustomName,
+                DroneEntityId = _droneEntityId,
+                DroneGridName = _droneGridName,
                 RequestId = requestId,
                 Timestamp = currentTime
             };
 
-            // Send broadcast
-            _igc.SendBroadcastMessage(_requestChannel, request.Serialize());
-            _echo?.Invoke($"[IGC] Sent docking pad request ID:{requestId}");
+            if (_localDockingManager != null)
+            {
+                var response = _localDockingManager.ProcessRequest(request, currentTime);
+                var localPending = new PendingRequest
+                {
+                    RequestId = requestId,
+                    SentTime = currentTime,
+                    Timeout = timeout,
+                    IsCompleted = true,
+                    Response = response
+                };
+                _pendingRequests[requestId] = localPending;
+                return new PendingDockingRequest(this, requestId);
+            }
+
+            if (_igc != null)
+            {
+                _igc.SendBroadcastMessage(_requestChannel, request.Serialize());
+                _echo?.Invoke($"[IGC] Sent docking pad request ID:{requestId}");
+            }
 
             // Track pending request
             var pending = new PendingRequest
@@ -86,6 +120,9 @@ namespace IngameScript
         /// </summary>
         public void ProcessMessages(double currentTime)
         {
+            if (_responseListener == null)
+                return;
+
             // Process response messages
             while (_responseListener.HasPendingMessage)
             {
@@ -97,7 +134,7 @@ namespace IngameScript
                     if (DockingPadResponse.TryParse(data, out response))
                     {
                         // Check if this response is for our drone
-                        if (response.DroneEntityId == _me.CubeGrid.EntityId)
+                        if (response.DroneEntityId == _droneEntityId)
                         {
                             PendingRequest pending;
                             if (_pendingRequests.TryGetValue(response.RequestId, out pending))

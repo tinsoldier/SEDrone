@@ -17,6 +17,7 @@ namespace IngameScript
         private List<BrainEntry> _refHackBrains = new List<BrainEntry>();
         private LocalCommandBus _localCommandBus;
         private LocalStateBus _localStateBus;
+        private DockingPadManager _localDockingManager;
 
         // === Hardware ===
         private IMyShipController _reference;
@@ -202,12 +203,15 @@ namespace IngameScript
             _localCommandBus = new LocalCommandBus();
             _localStateBus = new LocalStateBus();
 
+            _context.IGC = null;
             _context.CommandBus = _localCommandBus;
             _context.LeaderStateBus = _localStateBus;
+            _context.LocalDockingManager = null;
 
             var leaderBrain = new LeaderBrain { PB = Me };
             AddRefHackBrain(leaderBrain, _context);
             _activeBrain = leaderBrain;
+            _localDockingManager = leaderBrain.DockingPads;
 
             var droneContexts = DiscoverRefHackDrones();
             if (droneContexts.Count == 0)
@@ -275,13 +279,14 @@ namespace IngameScript
                 {
                     GridTerminalSystem = GridTerminalSystem,
                     Me = Me,
-                    IGC = IGC,
+                    IGC = null,
                     Config = _config,
                     Reference = droneReference,
                     GridId = gridId,
                     Hardware = hardware,
                     CommandBus = _localCommandBus,
                     LeaderStateBus = _localStateBus,
+                    LocalDockingManager = _localDockingManager,
                     TacticalCoordinator = _tacticalCoordinator,
                     SharedTacticalSnapshot = _tacticalSnapshot,
                     Echo = Echo,

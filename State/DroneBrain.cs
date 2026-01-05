@@ -134,12 +134,18 @@ namespace IngameScript
             DockingNav = new DockingNavigator(Navigator, context.Config);
 
             // Initialize IGC request manager
-            IGCRequests = new IGCRequestManager(
-                context.IGC,
-                context.Me,
-                context.Config.IGCChannel,
-                context.Echo
-            );
+            if (context.IGC != null || context.LocalDockingManager != null)
+            {
+                IGCRequests = new IGCRequestManager(
+                    context.IGC,
+                    context.Me,
+                    context.Config.IGCChannel,
+                    context.Echo,
+                    context.GridId,
+                    context.Reference != null ? context.Reference.CubeGrid.CustomName : null,
+                    context.LocalDockingManager
+                );
+            }
             
             // Initialize WeaponCore APIs
             InitializeWeaponCore(context);

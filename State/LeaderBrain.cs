@@ -31,6 +31,7 @@ namespace IngameScript
         private DockingPadManager _dockingPadManager;
         private Program.WcPbApi _wcApi;
         private bool _hasWeaponCore;
+        public DockingPadManager DockingPads { get { return _dockingPadManager; } }
 
         public void Initialize(BrainContext context)
         {
@@ -44,7 +45,10 @@ namespace IngameScript
 
             // Register listener for docking requests
             string dockingChannel = context.Config.IGCChannel + "_DOCK_REQUEST";
-            _dockingRequestListener = context.IGC.RegisterBroadcastListener(dockingChannel);
+            if (context.IGC != null)
+            {
+                _dockingRequestListener = context.IGC.RegisterBroadcastListener(dockingChannel);
+            }
 
             if (_context.CommandBus == null)
             {
@@ -76,7 +80,10 @@ namespace IngameScript
             }
 
             _status = "Initialized";
-            context.Echo?.Invoke($"[{Name}] Listening for docking requests on: {dockingChannel}");
+            if (context.IGC != null)
+            {
+                context.Echo?.Invoke($"[{Name}] Listening for docking requests on: {dockingChannel}");
+            }
         }
 
         public IEnumerator<bool> Run()
@@ -184,6 +191,9 @@ namespace IngameScript
 
         private void ProcessDockingRequests()
         {
+            if (_dockingRequestListener == null || _context.IGC == null)
+                return;
+
             // Process all pending docking requests
             while (_dockingRequestListener.HasPendingMessage)
             {

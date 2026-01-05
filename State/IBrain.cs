@@ -81,5 +81,8 @@ namespace IngameScript
         // === Shared Tactical ===
         public TacticalCoordinator TacticalCoordinator { get; set; }
         public TacticalSnapshot SharedTacticalSnapshot { get; set; }
+
+        // === Docking (refhack/local) ===
+        public DockingPadManager LocalDockingManager { get; set; }
     }
 }
