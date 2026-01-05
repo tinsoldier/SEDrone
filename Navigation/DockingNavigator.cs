@@ -76,11 +76,11 @@ namespace IngameScript
 
         /// <summary>
         /// Generates scalar distances for approach waypoints.
-        /// These are applied dynamically to the connector's forward direction each tick.
+        /// These are applied dynamically along the connector's approach direction (-forward).
         /// </summary>
         /// <param name="droneConnectorSize">Drone connector radius</param>
         /// <param name="targetConnectorSize">Target connector radius</param>
-        /// <returns>List of distances from connector along its forward axis</returns>
+        /// <returns>List of distances from connector along its approach axis</returns>
         public List<double> GenerateApproachDistances(
             double droneConnectorSize,
             double targetConnectorSize)
@@ -117,9 +117,9 @@ namespace IngameScript
             double predictionTime = _config.PredictionTime; // Default 0.5s
             Vector3D predictedPos = targetPosition + targetVelocity * predictionTime;
 
-            // Calculate clearance-adjusted approach position
+            // Calculate clearance-adjusted approach position (approach from -forward).
             double clearance = droneConnectorSize + targetConnectorSize;
-            Vector3D dockingPosition = predictedPos + connectorForward * clearance;
+            Vector3D dockingPosition = predictedPos - connectorForward * clearance;
 
             // Drone should face opposite direction to dock
             Vector3D dockingHeading = -connectorForward;

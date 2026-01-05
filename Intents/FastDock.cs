@@ -24,8 +24,8 @@ namespace IngameScript
         private const double ROTATION_ACCURACY_RAD = 0.08;      // Alignment tolerance for connection
 
         // Speed control
-        private const double APPROACH_SPEED = 100.0;            // Speed when approaching hold position
-        private const double FINAL_SPEED = 5.0;                 // Speed for final approach
+        private const double APPROACH_SPEED = 150.0;            // Speed when approaching hold position
+        private const double FINAL_SPEED = 15.0;                 // Speed for final approach
         private const double LANDING_SPEED = 2.0;               // Speed for landing
 
         // Proportional gain for velocity control (Spug uses simple P control)

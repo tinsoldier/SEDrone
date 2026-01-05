@@ -123,21 +123,19 @@ namespace IngameScript
             Vector3D leaderPos = _reference.GetPosition();
             Vector3D offsetWorld = connectorWorldPos - leaderPos;
 
-            // Build coordinate matrix exactly like SEAD2
-            // SEAD2: Matrix.CreateWorld(pos, forward, (-left).Cross(forward))
+            // Build coordinate matrix from forward/up to match LeaderStateMessage.WorldMatrix.
             // CRITICAL: Use the exact same formula on both encoding and decoding sides!
             MatrixD refMatrix = _reference.WorldMatrix;
             Vector3D leaderForward = refMatrix.Forward;
-            Vector3D leaderLeft = refMatrix.Left;
+            Vector3D leaderUp = refMatrix.Up;
 
-            // SEAD2 formula: up = (-left) × forward
             MatrixD coordinateMatrix = MatrixD.CreateWorld(
                 leaderPos,
                 leaderForward,
-                Vector3D.Cross(-leaderLeft, leaderForward)
+                leaderUp
             );
 
-            // Transform using SEAD2's method: TransformNormal with matrix transpose
+            // Transform using world->local with matrix transpose
             Vector3D localOffset = Vector3D.TransformNormal(offsetWorld, MatrixD.Transpose(coordinateMatrix));
 
             // DEBUG: Output connector offset in leader-local coordinates
@@ -154,7 +152,7 @@ namespace IngameScript
                 debugBlock.WriteText(debugMsg + "\n", true);
             }
 
-            // Transform connector directions using SEAD2's method
+            // Transform connector directions to leader-local
             Vector3D connectorForwardWorld = connector.WorldMatrix.Forward;
             Vector3D connectorUpWorld = connector.WorldMatrix.Up;
 

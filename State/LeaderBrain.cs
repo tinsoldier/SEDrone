@@ -118,7 +118,6 @@ namespace IngameScript
                 Velocity = velocity,
                 Forward = matrix.Forward,
                 Up = matrix.Up,
-                Left = matrix.Left,
                 Timestamp = _context.GameTime,
                 TargetEntityId = GetFocusedTargetId()
             };
@@ -135,7 +134,7 @@ namespace IngameScript
             try
             {
                 var focus = _wcApi.GetAiFocus(_context.Me.CubeGrid.EntityId, 0);
-                //return focus.HasValue ? focus.Value.EntityId : 0;
+                
                 //if focus has a valid value, return that, otherwise call GetSortedThreats and return the top threat, set that as the focus
                 if (focus.HasValue && focus.Value.EntityId != 0)
                 {

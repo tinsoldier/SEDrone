@@ -1,3 +1,4 @@
+using System;
 using VRageMath;
 
 namespace IngameScript
@@ -26,15 +27,13 @@ namespace IngameScript
         private Vector3D _cachedUp;
         private bool _hasCachedWorldMatrix;
 
-        // === Additional orientation data ===
-        public Vector3D Left;           // Left direction vector (needed for SEAD2-compatible transforms)
-
         // === Timestamp ===
         public double Timestamp;        // Game time when message was created
         public long TargetEntityId;     // Current focused target (0 if none)
 
         /// <summary>
         /// World matrix built from Position/Forward/Up, cached until those values change.
+        /// Ensures orthonormal basis.
         /// </summary>
         public MatrixD WorldMatrix
         {
@@ -51,10 +50,54 @@ namespace IngameScript
                     _cachedUp = Up;
                     _hasCachedWorldMatrix = true;
                 }
-
                 return _cachedWorldMatrix;
             }
         }
+        // public MatrixD WorldMatrix
+        // {
+        //     get
+        //     {
+        //         if (!_hasCachedWorldMatrix ||
+        //             _cachedPosition != Position ||
+        //             _cachedForward != Forward ||
+        //             _cachedUp != Up)
+        //         {
+        //             var f = Forward;
+        //             var u = Up;
+
+        //             // Normalize forward (fallback if degenerate)
+        //             if (f.LengthSquared() < 1e-12) f = Vector3D.Forward;
+        //             else f.Normalize();
+
+        //             // Make up orthogonal to forward, then normalize (fallback if degenerate)
+        //             u = u - f * Vector3D.Dot(u, f);
+        //             if (u.LengthSquared() < 1e-12)
+        //             {
+        //                 // Pick any up not parallel to forward
+        //                 u = Math.Abs(f.Y) < 0.99 ? Vector3D.Up : Vector3D.Right;
+        //                 u = u - f * Vector3D.Dot(u, f);
+        //             }
+        //             u.Normalize();
+
+        //             // Right-handed basis
+        //             var r = Vector3D.Cross(u, f);
+        //             r.Normalize();
+
+        //             // Recompute up to ensure perfect orthogonality + handedness
+        //             u = Vector3D.Cross(f, r);
+
+        //             _cachedWorldMatrix = MatrixD.CreateWorld(Position, f, u);
+
+        //             _cachedPosition = Position;
+        //             _cachedForward = Forward;
+        //             _cachedUp = Up;
+        //             _hasCachedWorldMatrix = true;
+        //         }
+
+        //         return _cachedWorldMatrix;
+        //     }
+        // }
+
 
         /// <summary>
         /// Serializes the message to a string for IGC transmission.
@@ -69,7 +112,7 @@ namespace IngameScript
                 Velocity.X, Velocity.Y, Velocity.Z,
                 Forward.X, Forward.Y, Forward.Z,
                 Up.X, Up.Y, Up.Z,
-                Left.X, Left.Y, Left.Z,
+                //Left.X, Left.Y, Left.Z,
                 Timestamp,
                 TargetEntityId
             );
@@ -89,7 +132,7 @@ namespace IngameScript
                 return false;
 
             string[] parts = data.Split('|');
-            if (parts.Length < 18)
+            if (parts.Length < 15)
                 return false;
 
             try
@@ -116,15 +159,10 @@ namespace IngameScript
                     double.Parse(parts[12]),
                     double.Parse(parts[13])
                 );
-                message.Left = new Vector3D(
-                    double.Parse(parts[14]),
-                    double.Parse(parts[15]),
-                    double.Parse(parts[16])
-                );
-                message.Timestamp = double.Parse(parts[17]);
-                if (parts.Length > 18)
+                message.Timestamp = double.Parse(parts[14]);
+                if (parts.Length > 14)
                 {
-                    message.TargetEntityId = long.Parse(parts[18]);
+                    message.TargetEntityId = long.Parse(parts[15]);
                 }
                 else
                 {

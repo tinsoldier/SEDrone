@@ -94,7 +94,7 @@ namespace IngameScript
                 return false;
 
             string[] parts = data.Split('|');
-            if (parts.Length < 15 || parts[0] != "DOCK_RESPONSE")
+            if (parts.Length < 16 || parts[0] != "DOCK_RESPONSE")
                 return false;
 
             try

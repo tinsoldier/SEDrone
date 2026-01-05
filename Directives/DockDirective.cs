@@ -127,15 +127,16 @@ namespace IngameScript
                         yield return new BehaviorIntent
                         {
                             Position = new Move(
-                                new Vector3D(0, 0, waypointDistances[currentIndex]),  // Local offset along connector forward
+                                new Vector3D(0, 0, -waypointDistances[currentIndex]),  // Local offset along connector -forward (approach)
                                 () => helpers.GetConnectorReference()),
                             Orientation = new LevelTurnToward(() => helpers.GetWaypointAtDistance(waypointDistances[currentIndex]) + helpers.GetTargetConnectorUp() * 20.0),
                             ExitWhen = () =>
                             {
                                 // Check distance
-                                if (ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex])) >= 3.0)
+                                var dist = ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex]));
+                                if (dist >= 3.0)
                                 {
-                                    //ctx.Debug?.Log("Dock: Not yet at first waypoint");
+                                    //ctx.Debug?.Log($"Dock: First waypoint dist:{dist:F2}m");
                                     return false;
                                 }
 
@@ -167,11 +168,18 @@ namespace IngameScript
                         yield return new BehaviorIntent
                         {
                             Position = new Move(
-                                new Vector3D(0, 0, waypointDistances[currentIndex]),  // Local offset along connector forward
+                                new Vector3D(0, 0, -waypointDistances[currentIndex]),  // Local offset along connector -forward (approach)
                                 () => helpers.GetConnectorReference(),
-                                closingSpeed: ctx.Config.DockingApproachSpeed),
+                                closingSpeed: ctx.Config.DockingApproachSpeed, maxSpeed: ctx.Config.DockingApproachSpeed),
                             Orientation = dockingOrientation,
-                            ExitWhen = () => ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex])) < 3.0
+                            ExitWhen = () => 
+                            {
+                                ctx.Debug?.Log($"Dock: Approach speed: {ctx.Velocity.Length():F2} m/s ({ctx.Config.DockingApproachSpeed} m/s max)");
+
+                                var dist = ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex]));
+                                //ctx.Debug?.Log($"Dock: Waypoint {currentIndex} dist:{dist:F2}m");
+                                return dist < 3.0;
+                            }
                         };
                     }
 
@@ -186,7 +194,7 @@ namespace IngameScript
                     Position = new Move(
                         () => helpers.GetDockingApproachOffset(droneConnectorSize, targetConnectorSize),
                         () => helpers.GetConnectorReference(),
-                        closingSpeed: ctx.Config.DockingFinalSpeed),
+                        closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed),
                     Orientation = dockingOrientation,
                     // Measure from drone connector to target - not from ship controller
                     ExitWhen = () => Vector3D.Distance(droneConnector.GetPosition(), helpers.GetConnectorPosition()) < (droneConnectorSize + targetConnectorSize + 1.0)
@@ -197,13 +205,13 @@ namespace IngameScript
 
                 // Move to one connector radius away (let magnetic lock pull them together gently)
                 // This prevents the "bump" by stopping short and letting connector magnets do final pull
-                double finalApproachDistance = droneConnectorSize + targetConnectorSize;
+                double finalApproachDistance = droneConnectorSize + targetConnectorSize - .125; // Small safety margin
                 yield return new BehaviorIntent
                 {
                     Position = new Move(
-                        new Vector3D(0, 0, finalApproachDistance),
+                        new Vector3D(0, 0, -finalApproachDistance),  // Local offset along connector -forward (approach)
                         () => helpers.GetConnectorReference(),
-                        closingSpeed: ctx.Config.DockingFinalSpeed),
+                        closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed),
                     Orientation = dockingOrientation,
                     ExitWhen = () =>
                     {
@@ -232,7 +240,7 @@ namespace IngameScript
                 }
 
                 // Attempt connector lock if connectable
-                ctx.Debug?.Log($"Dock: Attempting lock (status={droneConnector.Status})");
+                ctx.Debug?.Log($"Dock: Attempting lock (status={droneConnector.Status}, finalDist={finalApproachDistance:F2}m)");
                 if (droneConnector.Status == MyShipConnectorStatus.Connectable)
                 {
                     droneConnector.Connect();
@@ -244,9 +252,9 @@ namespace IngameScript
                     yield return new BehaviorIntent
                     {
                         Position = new Move(
-                            new Vector3D(0, 0, finalApproachDistance),
+                            new Vector3D(0, 0, -finalApproachDistance),  // Local offset along connector -forward (approach)
                             () => helpers.GetConnectorReference(),
-                            closingSpeed: ctx.Config.DockingLockSpeed),
+                            closingSpeed: ctx.Config.DockingLockSpeed, maxSpeed: ctx.Config.DockingLockSpeed),
                         Orientation = dockingOrientation,
                         ExitWhen = () => {
                             droneConnector.Connect();
@@ -322,60 +330,35 @@ namespace IngameScript
             }
 
             /// <summary>
-            /// Builds the coordinate matrix exactly like DockingPadManager does.
-            /// CRITICAL: Must match the encoding side to ensure correct transformations.
-            /// Uses SEAD2's formula: Matrix.CreateWorld(pos, forward, (-left)×forward)
-            /// </summary>
-            private MatrixD GetCoordinateMatrix()
-            {
-                Vector3D leaderPos = _ctx.LastLeaderState.Position;
-                Vector3D leaderForward = _ctx.LastLeaderState.Forward;
-                Vector3D leaderLeft = _ctx.LastLeaderState.Left;
-
-                // SEAD2 formula: up = (-left) × forward
-                // This MUST match DockingPadManager's encoding!
-                return MatrixD.CreateWorld(
-                    leaderPos,
-                    leaderForward,
-                    Vector3D.Cross(-leaderLeft, leaderForward)
-                );
-            }
-
-            /// <summary>
             /// Transforms connector forward from leader-local to world space.
-            /// Uses SEAD2's method: Vector3D.TransformNormal with the coordinate matrix.
             /// </summary>
             public Vector3D GetTargetConnectorForward()
             {
                 if (!_ctx.HasLeaderContact) return Vector3D.Zero;
-
-                MatrixD coordMatrix = GetCoordinateMatrix();
-                return Vector3D.TransformNormal(_response.ConnectorForward, coordMatrix);
+                return Vector3D.TransformNormal(_response.ConnectorForward, _ctx.LastLeaderState.WorldMatrix);
             }
 
             /// <summary>
             /// Transforms connector up from leader-local to world space.
-            /// Uses SEAD2's method: Vector3D.TransformNormal with the coordinate matrix.
             /// </summary>
             public Vector3D GetTargetConnectorUp()
             {
                 if (!_ctx.HasLeaderContact) return Vector3D.Zero;
-
-                MatrixD coordMatrix = GetCoordinateMatrix();
-                return Vector3D.TransformNormal(_response.ConnectorUp, coordMatrix);
+                return Vector3D.TransformNormal(_response.ConnectorUp, _ctx.LastLeaderState.WorldMatrix);
             }
 
             /// <summary>
             /// Gets the connector world position (dynamically updated each tick).
-            /// Uses SEAD2's method: Vector3D.Transform with the coordinate matrix.
             /// Adjusted for drone reference-to-connector offset so behaviors position the connector correctly.
             /// </summary>
             public Vector3D GetConnectorPosition()
             {
                 if (!_ctx.HasLeaderContact) return Vector3D.Zero;
 
-                MatrixD coordMatrix = GetCoordinateMatrix();
-                Vector3D targetConnectorWorldPos = Vector3D.Transform(_response.ConnectorOffset, coordMatrix);
+                Vector3D targetConnectorWorldPos = 
+                    _ctx.LastLeaderState.Position + 
+                    Vector3D.TransformNormal(_response.ConnectorOffset, _ctx.LastLeaderState.WorldMatrix);
+                //Vector3D targetConnectorWorldPos = Vector3D.Transform(_response.ConnectorOffset, _ctx.LastLeaderState.WorldMatrix);
 
                 // Adjust for reference-to-connector offset
                 // We want: droneConnector.GetPosition() == targetConnectorWorldPos
@@ -396,16 +379,16 @@ namespace IngameScript
                         Vector3D offset = targetConnectorWorldPos - droneConnectorPos;
                         double distance = offset.Length();
 
-                        // string debugMsg = string.Format(
-                        //     "[DECODE] Local: X={0:F2} Y={1:F2} Z={2:F2}\n" +
-                        //     "Target Connector: {3:F2},{4:F2},{5:F2}\n" +
-                        //     "Drone Connector: {6:F2},{7:F2},{8:F2}\n" +
-                        //     "Offset: {9:F2},{10:F2},{11:F2} (dist={12:F2}m)",
-                        //     _response.ConnectorOffset.X, _response.ConnectorOffset.Y, _response.ConnectorOffset.Z,
-                        //     targetConnectorWorldPos.X, targetConnectorWorldPos.Y, targetConnectorWorldPos.Z,
-                        //     droneConnectorPos.X, droneConnectorPos.Y, droneConnectorPos.Z,
-                        //     offset.X, offset.Y, offset.Z, distance);
-                        // debugBlock.WriteText(debugMsg + "\n", true);
+                        string debugMsg = string.Format(
+                            "[DECODE] Local: X={0:F2} Y={1:F2} Z={2:F2}\n" +
+                            "Target Connector: {3:F2},{4:F2},{5:F2}\n" +
+                            "Drone Connector: {6:F2},{7:F2},{8:F2}\n" +
+                            "Offset: {9:F2},{10:F2},{11:F2} (dist={12:F2}m)",
+                            _response.ConnectorOffset.X, _response.ConnectorOffset.Y, _response.ConnectorOffset.Z,
+                            targetConnectorWorldPos.X, targetConnectorWorldPos.Y, targetConnectorWorldPos.Z,
+                            droneConnectorPos.X, droneConnectorPos.Y, droneConnectorPos.Z,
+                            offset.X, offset.Y, offset.Z, distance);
+                        debugBlock.WriteText(debugMsg + "\n", true);
                     }
                 }
 
@@ -421,8 +404,8 @@ namespace IngameScript
                 if (!_ctx.HasLeaderContact) return Vector3D.Zero;
 
                 Vector3D connectorPos = GetConnectorPosition();
-                Vector3D connectorForward = GetTargetConnectorForward();
-                return connectorPos + connectorForward * distance;
+                Vector3D approachForward = GetTargetConnectorForward();
+                return connectorPos + approachForward * distance;
             }
 
             public DockingApproachResult GetDockingApproach(double droneConnectorSize, double targetConnectorSize)

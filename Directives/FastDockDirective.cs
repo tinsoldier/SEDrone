@@ -162,15 +162,7 @@ namespace IngameScript
 
             private MatrixD GetCoordinateMatrix()
             {
-                Vector3D leaderPos = _ctx.LastLeaderState.Position;
-                Vector3D leaderForward = _ctx.LastLeaderState.Forward;
-                Vector3D leaderLeft = _ctx.LastLeaderState.Left;
-
-                return MatrixD.CreateWorld(
-                    leaderPos,
-                    leaderForward,
-                    Vector3D.Cross(-leaderLeft, leaderForward)
-                );
+                return _ctx.LastLeaderState.WorldMatrix;
             }
 
             public Vector3D GetTargetConnectorForward()
