@@ -39,7 +39,6 @@ namespace IngameScript
         // === Flight Parameters ===
         public double MaxSpeed { get; set; } = 100.0;           // Hard speed cap (m/s)
         public double ApproachSpeed { get; set; } = 60.0;       // Speed when distant (m/s)
-        public double PrecisionRadius { get; set; } = 20.0;     // Slow-down distance (m)
         public double StationRadius { get; set; } = 2.0;        // "Close enough" tolerance (m)
         public double HoverAltitude { get; set; } = 30.0;       // Ground-relative height (m)
         public double MinTerrainClearance { get; set; } = 10.0; // Minimum ground clearance (m)
@@ -51,10 +50,6 @@ namespace IngameScript
         public double DockingApproachSpeed { get; set; } = 60.0;   // Speed during waypoint approach (m/s)
         public double DockingFinalSpeed { get; set; } = 5.0;       // Speed during final alignment (m/s)
         public double DockingLockSpeed { get; set; } = 2;        // Speed during lock attempt (m/s)
-        public bool DockingUseSuicideBurn { get; set; } = false;   // Use aggressive braking calculation
-
-        // === Intercept Mode ===
-        public double InterceptNoseUpAngle { get; set; } = 45.0;  // Default pitch-up angle when no positions available (degrees)
 
         // === PID Tuning ===
         public PIDGains PositionPID { get; set; } = new PIDGains(2.0, 0.1, 0.8, 50);
@@ -103,7 +98,6 @@ namespace IngameScript
             // === Flight Section ===
             config.MaxSpeed = ini.Get("Flight", "MaxSpeed").ToDouble(config.MaxSpeed);
             config.ApproachSpeed = ini.Get("Flight", "ApproachSpeed").ToDouble(config.ApproachSpeed);
-            config.PrecisionRadius = ini.Get("Flight", "PrecisionRadius").ToDouble(config.PrecisionRadius);
             config.StationRadius = ini.Get("Flight", "StationRadius").ToDouble(config.StationRadius);
             config.HoverAltitude = ini.Get("Flight", "HoverAltitude").ToDouble(config.HoverAltitude);
             config.MinTerrainClearance = ini.Get("Flight", "MinTerrainClearance").ToDouble(config.MinTerrainClearance);
@@ -116,10 +110,6 @@ namespace IngameScript
             config.DockingApproachSpeed = ini.Get("Docking", "ApproachSpeed").ToDouble(config.DockingApproachSpeed);
             config.DockingFinalSpeed = ini.Get("Docking", "FinalSpeed").ToDouble(config.DockingFinalSpeed);
             config.DockingLockSpeed = ini.Get("Docking", "LockSpeed").ToDouble(config.DockingLockSpeed);
-            config.DockingUseSuicideBurn = ini.Get("Docking", "UseSuicideBurn").ToBoolean(config.DockingUseSuicideBurn);
-
-            // === Intercept Section ===
-            config.InterceptNoseUpAngle = ini.Get("Intercept", "NoseUpAngle").ToDouble(config.InterceptNoseUpAngle);
 
             // === PID Sections ===
             config.PositionPID = ParsePIDGains(ini, "PositionPID", config.PositionPID);
@@ -255,8 +245,6 @@ ApproachSpeed=40
 FinalSpeed=5.0
 ; Speed during connector lock attempt (m/s)
 LockSpeed=2.0
-; Use aggressive suicide-burn style braking for faster docking
-UseSuicideBurn=false
 
 [PositionPID]
 Kp=2.0

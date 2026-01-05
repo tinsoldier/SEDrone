@@ -34,6 +34,7 @@ namespace IngameScript
         public ThrusterController Thrusters { get; private set; }
         public FormationNavigator Navigator { get; private set; }
         public DockingNavigator DockingNav { get; private set; }
+        public DebugLogger Debug => _droneContext?.Debug;
         public FixedWeaponRigProvider WeaponRigs { get; private set; }
         public Program.WcPbApi WcApi { get { return _wcApi; } }
         public IGCRequestManager IGCRequests { get; private set; }

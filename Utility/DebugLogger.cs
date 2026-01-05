@@ -20,6 +20,14 @@ namespace IngameScript
         private string _lastMessage;
         private double _lastMessageStartTime;
 
+        // Perf stats (updated externally, rendered in Flush)
+        private double _perfWindowStart;
+        private int _perfSampleCount;
+        private double _perfSumMs;
+        private double _perfMinMs = double.MaxValue;
+        private double _perfMaxMs;
+        private string _perfLine;
+
         /// <summary>
         /// Creates a debug logger that writes to the PB's Echo output.
         /// </summary>
@@ -82,10 +90,14 @@ namespace IngameScript
         /// </summary>
         public void Flush()
         {
-            if (_messages.Count > 0)
+            if (_messages.Count > 0 || !string.IsNullOrEmpty(_perfLine))
             {
                 var output = new StringBuilder();
                 output.AppendLine("=== Debug Log (newest first) ===");
+                if (!string.IsNullOrEmpty(_perfLine))
+                {
+                    output.AppendLine(_perfLine);
+                }
 
                 // Print in reverse order (newest first)
                 for (int i = _messages.Count - 1; i >= 0; i--)
@@ -106,6 +118,30 @@ namespace IngameScript
             _lineCount = 0;
             _lastMessage = null;
             _lastMessageStartTime = 0;
+            _perfLine = null;
+        }
+
+        /// <summary>
+        /// Updates perf stats for display (averaged over ~1 second).
+        /// </summary>
+        public void UpdatePerfStats(double sampleMs, double currentTime)
+        {
+            _perfSumMs += sampleMs;
+            _perfSampleCount++;
+            _perfMinMs = Math.Min(_perfMinMs, sampleMs);
+            _perfMaxMs = Math.Max(_perfMaxMs, sampleMs);
+
+            if (currentTime - _perfWindowStart < 1.0)
+                return;
+
+            double avg = _perfSampleCount > 0 ? _perfSumMs / _perfSampleCount : 0;
+            _perfLine = $"avg {avg:F3}ms min {_perfMinMs:F3} max {_perfMaxMs:F3}";
+
+            _perfWindowStart = currentTime;
+            _perfSampleCount = 0;
+            _perfSumMs = 0;
+            _perfMinMs = double.MaxValue;
+            _perfMaxMs = 0;
         }
 
         /// <summary>
