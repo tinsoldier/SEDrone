@@ -24,6 +24,7 @@ namespace IngameScript
         // === Role Configuration ===
         public GridRole Role { get; set; } = GridRole.Drone;
         public string IGCChannel { get; set; } = "FORMATION_ALPHA";  // Channel for formation comms
+        public bool RefHackMode { get; set; } = false;
 
         // === Target Identification ===
         public string TargetGridName { get; set; } = "";
@@ -84,6 +85,7 @@ namespace IngameScript
             string roleStr = ini.Get("Role", "Mode").ToString("Drone");
             config.Role = roleStr.ToUpperInvariant() == "LEADER" ? GridRole.Leader : GridRole.Drone;
             config.IGCChannel = ini.Get("Role", "Channel").ToString(config.IGCChannel);
+            config.RefHackMode = ini.Get("Role", "RefHack").ToBoolean(config.RefHackMode);
 
             // === Target Section ===
             config.TargetGridName = ini.Get("Target", "GridName").ToString(config.TargetGridName);
@@ -204,6 +206,8 @@ namespace IngameScript
 Mode=Drone
 ; IGC channel for formation communication
 Channel=FORMATION_ALPHA
+; Refhack mode: leader PB controls docked drones directly
+RefHack=false
 
 [Target]
 ; Name of the grid to follow (partial match supported)

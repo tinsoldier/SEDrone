@@ -13,6 +13,10 @@ namespace IngameScript
         private IBrain _activeBrain;
         private IEnumerator<bool> _brainStateMachine;
         private BrainContext _context;
+        private bool _refHackMode;
+        private List<BrainEntry> _refHackBrains = new List<BrainEntry>();
+        private LocalCommandBus _localCommandBus;
+        private LocalStateBus _localStateBus;
 
         // === Hardware ===
         private IMyShipController _reference;
@@ -20,6 +24,7 @@ namespace IngameScript
         // === Tactical ===
         private TacticalCoordinator _tacticalCoordinator;
         private TacticalSnapshot _tacticalSnapshot;
+        private const string REFHACK_CONNECTOR_KEYWORD = "DronePad";
 
         // === Timing ===
         private double _lastRunTime;
@@ -70,8 +75,25 @@ namespace IngameScript
             _context.TacticalCoordinator = _tacticalCoordinator;
             _context.SharedTacticalSnapshot = _tacticalSnapshot;
 
-            // Select and initialize brain based on role
-            SelectBrain();
+            if (_config.RefHackMode)
+            {
+                if (_config.Role != GridRole.Leader)
+                {
+                    Echo("RefHack mode requires Role=Leader, falling back to normal mode.");
+                    _refHackMode = false;
+                    SelectBrain();
+                }
+                else
+                {
+                    _refHackMode = true;
+                    InitializeRefHackBrains();
+                }
+            }
+            else
+            {
+                // Select and initialize brain based on role
+                SelectBrain();
+            }
 
             // Set update frequency
             switch (_config.UpdateFrequency)
@@ -110,28 +132,35 @@ namespace IngameScript
                 HandleCommand(argument);
             }
 
-            // Run brain state machine
-            if (_brainStateMachine != null)
+            if (_refHackMode)
             {
-                try
+                RunRefHackBrains();
+            }
+            else
+            {
+                // Run brain state machine
+                if (_brainStateMachine != null)
                 {
-                    if (!_brainStateMachine.MoveNext() || !_brainStateMachine.Current)
+                    try
                     {
-                        Echo($"Brain '{_activeBrain?.Name}' completed or failed.");
-                        _brainStateMachine.Dispose();
+                        if (!_brainStateMachine.MoveNext() || !_brainStateMachine.Current)
+                        {
+                            Echo($"Brain '{_activeBrain?.Name}' completed or failed.");
+                            _brainStateMachine.Dispose();
+                            _brainStateMachine = null;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Echo($"Brain error: {ex.Message}");
+                        _brainStateMachine?.Dispose();
                         _brainStateMachine = null;
                     }
                 }
-                catch (Exception ex)
-                {
-                    Echo($"Brain error: {ex.Message}");
-                    _brainStateMachine?.Dispose();
-                    _brainStateMachine = null;
-                }
-            }
 
-            var droneBrain = _activeBrain as DroneBrain;
-            droneBrain?.Debug?.UpdatePerfStats(Runtime.LastRunTimeMs, _context.GameTime);
+                var droneBrain = _activeBrain as DroneBrain;
+                droneBrain?.Debug?.UpdatePerfStats(Runtime.LastRunTimeMs, _context.GameTime);
+            }
 
             // Status display
             //DisplayStatus();
@@ -164,6 +193,144 @@ namespace IngameScript
             // Initialize and start
             _activeBrain.Initialize(_context);
             _brainStateMachine = _activeBrain.Run();
+        }
+
+        private void InitializeRefHackBrains()
+        {
+            _refHackBrains.Clear();
+
+            _localCommandBus = new LocalCommandBus();
+            _localStateBus = new LocalStateBus();
+
+            _context.CommandBus = _localCommandBus;
+            _context.LeaderStateBus = _localStateBus;
+
+            var leaderBrain = new LeaderBrain { PB = Me };
+            AddRefHackBrain(leaderBrain, _context);
+            _activeBrain = leaderBrain;
+
+            var droneContexts = DiscoverRefHackDrones();
+            if (droneContexts.Count == 0)
+            {
+                Echo("[RefHack] No docked drones detected on DronePad connectors.");
+            }
+
+            for (int i = 0; i < droneContexts.Count; i++)
+            {
+                var droneBrain = new DroneBrain { PB = Me };
+                AddRefHackBrain(droneBrain, droneContexts[i]);
+            }
+        }
+
+        private void AddRefHackBrain(IBrain brain, BrainContext context)
+        {
+            brain.Initialize(context);
+            _refHackBrains.Add(new BrainEntry
+            {
+                Brain = brain,
+                Context = context,
+                StateMachine = brain.Run()
+            });
+        }
+
+        private List<BrainContext> DiscoverRefHackDrones()
+        {
+            var contexts = new List<BrainContext>();
+            var connectors = new List<IMyShipConnector>();
+            GridTerminalSystem.GetBlocksOfType(connectors, c =>
+                c.CubeGrid.EntityId == _context.GridId
+                && c.CustomName.IndexOf(REFHACK_CONNECTOR_KEYWORD, StringComparison.OrdinalIgnoreCase) >= 0);
+
+            var seen = new HashSet<long>();
+
+            for (int i = 0; i < connectors.Count; i++)
+            {
+                var connector = connectors[i];
+                if (connector == null || connector.Status != MyShipConnectorStatus.Connected)
+                    continue;
+                if (connector.OtherConnector == null || connector.OtherConnector.CubeGrid == null)
+                    continue;
+
+                long gridId = connector.OtherConnector.CubeGrid.EntityId;
+                if (gridId == 0 || gridId == _context.GridId || seen.Contains(gridId))
+                    continue;
+
+                seen.Add(gridId);
+
+                var droneReference = FindReferenceBlockForGrid(gridId);
+                if (droneReference == null)
+                {
+                    Echo($"[RefHack] No ship controller found for grid {gridId}");
+                    continue;
+                }
+
+                var hardware = DroneHardware.Capture(GridTerminalSystem, gridId, droneReference);
+                if (hardware == null || !hardware.IsValid())
+                {
+                    Echo($"[RefHack] Hardware capture failed for grid {gridId}");
+                    continue;
+                }
+
+                var droneContext = new BrainContext
+                {
+                    GridTerminalSystem = GridTerminalSystem,
+                    Me = Me,
+                    IGC = IGC,
+                    Config = _config,
+                    Reference = droneReference,
+                    GridId = gridId,
+                    Hardware = hardware,
+                    CommandBus = _localCommandBus,
+                    LeaderStateBus = _localStateBus,
+                    TacticalCoordinator = _tacticalCoordinator,
+                    SharedTacticalSnapshot = _tacticalSnapshot,
+                    Echo = Echo,
+                    GameTime = _context.GameTime,
+                    DeltaTime = _context.DeltaTime
+                };
+
+                contexts.Add(droneContext);
+            }
+
+            return contexts;
+        }
+
+        private void RunRefHackBrains()
+        {
+            for (int i = 0; i < _refHackBrains.Count; i++)
+            {
+                _refHackBrains[i].Context.GameTime = _context.GameTime;
+                _refHackBrains[i].Context.DeltaTime = _context.DeltaTime;
+            }
+
+            for (int i = _refHackBrains.Count - 1; i >= 0; i--)
+            {
+                var entry = _refHackBrains[i];
+                try
+                {
+                    if (!entry.StateMachine.MoveNext() || !entry.StateMachine.Current)
+                    {
+                        Echo($"Brain '{entry.Brain?.Name}' completed or failed.");
+                        entry.StateMachine.Dispose();
+                        _refHackBrains.RemoveAt(i);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Echo($"Brain error: {ex.Message}");
+                    entry.StateMachine.Dispose();
+                    _refHackBrains.RemoveAt(i);
+                }
+            }
+
+            for (int i = 0; i < _refHackBrains.Count; i++)
+            {
+                var droneBrain = _refHackBrains[i].Brain as DroneBrain;
+                if (droneBrain != null)
+                {
+                    droneBrain.Debug?.UpdatePerfStats(Runtime.LastRunTimeMs, _refHackBrains[i].Context.GameTime);
+                }
+            }
         }
 
         private void HandleCommand(string argument)
@@ -366,33 +533,45 @@ namespace IngameScript
 
         private IMyShipController FindReferenceBlock()
         {
+            return FindReferenceBlockForGrid(Me.CubeGrid.EntityId);
+        }
+
+        private IMyShipController FindReferenceBlockForGrid(long gridId)
+        {
             var controllers = new List<IMyShipController>();
-            GridTerminalSystem.GetBlocksOfType(controllers, c => c.CubeGrid == Me.CubeGrid);
+            GridTerminalSystem.GetBlocksOfType(controllers, c => c.CubeGrid.EntityId == gridId);
 
             // Prefer cockpits that are set as main
-            foreach (var controller in controllers)
+            for (int i = 0; i < controllers.Count; i++)
             {
-                var cockpit = controller as IMyCockpit;
+                var cockpit = controllers[i] as IMyCockpit;
                 if (cockpit != null && cockpit.IsMainCockpit)
                     return cockpit;
             }
 
             // Then any cockpit
-            foreach (var controller in controllers)
+            for (int i = 0; i < controllers.Count; i++)
             {
-                if (controller is IMyCockpit)
-                    return controller;
+                if (controllers[i] is IMyCockpit)
+                    return controllers[i];
             }
 
             // Then remote control
-            foreach (var controller in controllers)
+            for (int i = 0; i < controllers.Count; i++)
             {
-                if (controller is IMyRemoteControl)
-                    return controller;
+                if (controllers[i] is IMyRemoteControl)
+                    return controllers[i];
             }
 
             // Any controller
             return controllers.FirstOrDefault();
+        }
+
+        private class BrainEntry
+        {
+            public IBrain Brain;
+            public BrainContext Context;
+            public IEnumerator<bool> StateMachine;
         }
 
         private double GetDeltaTime()
