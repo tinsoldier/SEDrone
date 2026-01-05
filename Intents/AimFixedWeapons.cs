@@ -69,6 +69,7 @@ namespace IngameScript
                 {
                     weapon.Fire(false);
                 }
+                ApplyFallbackOrientation(ctx);
                 return;
             }
 
@@ -95,6 +96,7 @@ namespace IngameScript
                 {
                     weapon.Fire(false);
                 }
+                ApplyFallbackOrientation(ctx);
                 return;
             }
 
@@ -193,6 +195,21 @@ namespace IngameScript
             }
 
             return aimDirection.LengthSquared() > 0.001;
+        }
+
+        private void ApplyFallbackOrientation(DroneContext ctx)
+        {
+            if (ctx == null)
+                return;
+
+            if (ctx.HasLeaderContact)
+            {
+                ctx.Gyros.MatchCompassHeading(ctx.LastLeaderState.Forward, ctx.LastLeaderState.Up);
+            }
+            else
+            {
+                ctx.Gyros.OrientLevel();
+            }
         }
     }
 }

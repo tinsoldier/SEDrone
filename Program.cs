@@ -15,8 +15,8 @@ namespace IngameScript
         private BrainContext _context;
         private bool _refHackMode;
         private List<BrainEntry> _refHackBrains = new List<BrainEntry>();
-        private LocalCommandBus _localCommandBus;
         private LocalStateBus _localStateBus;
+        private List<ICommandBus> _refHackCommandBuses = new List<ICommandBus>();
         private DockingPadManager _localDockingManager;
 
         // === Hardware ===
@@ -199,12 +199,12 @@ namespace IngameScript
         private void InitializeRefHackBrains()
         {
             _refHackBrains.Clear();
+            _refHackCommandBuses.Clear();
 
-            _localCommandBus = new LocalCommandBus();
             _localStateBus = new LocalStateBus();
 
             _context.IGC = null;
-            _context.CommandBus = _localCommandBus;
+            _context.CommandBus = null;
             _context.LeaderStateBus = _localStateBus;
             _context.LocalDockingManager = null;
 
@@ -275,6 +275,11 @@ namespace IngameScript
                     continue;
                 }
 
+                Vector3D? stationOffsetOverride = BuildStationOffsetFromPad(connector);
+
+                var commandBus = new LocalCommandBus();
+                _refHackCommandBuses.Add(commandBus);
+
                 var droneContext = new BrainContext
                 {
                     GridTerminalSystem = GridTerminalSystem,
@@ -284,9 +289,10 @@ namespace IngameScript
                     Reference = droneReference,
                     GridId = gridId,
                     Hardware = hardware,
-                    CommandBus = _localCommandBus,
+                    CommandBus = commandBus,
                     LeaderStateBus = _localStateBus,
                     LocalDockingManager = _localDockingManager,
+                    StationOffsetOverride = stationOffsetOverride,
                     TacticalCoordinator = _tacticalCoordinator,
                     SharedTacticalSnapshot = _tacticalSnapshot,
                     Echo = Echo,
@@ -378,6 +384,9 @@ namespace IngameScript
                 case "ESCORT":
                     HandleEscortCommand();
                     break;
+                case "REFRESH_DOCKS":
+                    RefreshDockingData();
+                    break;
 
                 default:
                     // Check for leader commands (e.g., "DOCK_ALL", "ESCORT_ALL")
@@ -391,7 +400,7 @@ namespace IngameScript
                         Echo("Available commands: RELOAD, STATUS, STOP, START, DOCK, FASTDOCK, ESCORT");
                         if (_config.Role == GridRole.Leader)
                         {
-                            Echo("Leader commands: DOCK_ALL, ESCORT_ALL, FORMUP_ALL");
+                            Echo("Leader commands: DOCK_ALL, ESCORT_ALL, FORMUP_ALL, REFRESH_DOCKS");
                         }
                     }
                     break;
@@ -438,6 +447,45 @@ namespace IngameScript
             droneBrain.SetDirective(new EscortDirective());
             Echo("Switching to ESCORT directive.");
             Echo("Resuming formation flying...");
+        }
+
+        private void RefreshDockingData()
+        {
+            if (_refHackMode)
+            {
+                for (int i = 0; i < _refHackBrains.Count; i++)
+                {
+                    var leaderBrain = _refHackBrains[i].Brain as LeaderBrain;
+                    if (leaderBrain != null && leaderBrain.DockingPads != null)
+                    {
+                        leaderBrain.DockingPads.RefreshConnectors();
+                    }
+
+                    var droneBrain = _refHackBrains[i].Brain as DroneBrain;
+                    if (droneBrain != null && droneBrain.Context != null && droneBrain.Context.Hardware != null)
+                    {
+                        droneBrain.Context.Hardware.RefreshConnectors(GridTerminalSystem);
+                    }
+                }
+
+                Echo("RefHack docking data refreshed.");
+                return;
+            }
+
+            var activeLeader = _activeBrain as LeaderBrain;
+            if (activeLeader != null && activeLeader.DockingPads != null)
+            {
+                activeLeader.DockingPads.RefreshConnectors();
+                Echo("Leader docking pads refreshed.");
+                return;
+            }
+
+            var activeDrone = _activeBrain as DroneBrain;
+            if (activeDrone != null && activeDrone.Context != null && activeDrone.Context.Hardware != null)
+            {
+                activeDrone.Context.Hardware.RefreshConnectors(GridTerminalSystem);
+                Echo("Drone connectors refreshed.");
+            }
         }
 
         /// <summary>
@@ -518,6 +566,15 @@ namespace IngameScript
                 Timestamp = _context.GameTime
             };
 
+            if (_refHackMode && _refHackCommandBuses.Count > 0)
+            {
+                for (int i = 0; i < _refHackCommandBuses.Count; i++)
+                {
+                    _refHackCommandBuses[i].Publish(message);
+                }
+                return;
+            }
+
             if (_context.CommandBus != null)
             {
                 _context.CommandBus.Publish(message);
@@ -570,6 +627,37 @@ namespace IngameScript
 
             // Any controller
             return controllers.FirstOrDefault();
+        }
+
+        private Vector3D? BuildStationOffsetFromPad(IMyShipConnector padConnector)
+        {
+            if (padConnector == null || _context == null || _context.Reference == null)
+                return null;
+
+            Vector3D padRightWorld = padConnector.WorldMatrix.Right;
+            Vector3D padUpWorld = padConnector.WorldMatrix.Up;
+            Vector3D padForwardWorld = padConnector.WorldMatrix.Forward;
+
+            if (padRightWorld.LengthSquared() < 0.001 || padUpWorld.LengthSquared() < 0.001 || padForwardWorld.LengthSquared() < 0.001)
+                return null;
+
+            Vector3D configOffset = _config.StationOffset;
+            if (configOffset.LengthSquared() < 0.01)
+                return null;
+
+            MatrixD leaderMatrix = _context.Reference.WorldMatrix;
+            // Use connector Up as pseudo-forward for offsets.
+            Vector3D worldOffset =
+                padRightWorld * configOffset.X +
+                padForwardWorld * configOffset.Y +
+                padUpWorld * configOffset.Z;
+
+            Vector3D leaderPos = _context.Reference.GetPosition();
+            Vector3D formationWorldPos = padConnector.GetPosition() + worldOffset;
+            Vector3D worldOffsetFromLeader = formationWorldPos - leaderPos;
+            Vector3D localOffset = Vector3D.TransformNormal(worldOffsetFromLeader, MatrixD.Transpose(leaderMatrix));
+            Echo($"[RefHack] Station offset from pad '{padConnector.CustomName}': {localOffset.X:F1},{localOffset.Y:F1},{localOffset.Z:F1}");
+            return localOffset;
         }
 
         private class BrainEntry

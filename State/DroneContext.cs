@@ -22,6 +22,19 @@ namespace IngameScript
         public DroneConfig Config => _brain.Config;
 
         /// <summary>
+        /// Formation offset to use for this drone (override or config default).
+        /// </summary>
+        public Vector3D StationOffset
+        {
+            get
+            {
+                if (_brain.Context.StationOffsetOverride.HasValue)
+                    return _brain.Context.StationOffsetOverride.Value;
+                return Config.StationOffset;
+            }
+        }
+
+        /// <summary>
         /// The ship controller used as reference.
         /// </summary>
         public IMyShipController Reference => _brain.Context.Reference;
@@ -178,7 +191,7 @@ namespace IngameScript
             if (!HasLeaderContact)
                 return Vector3D.Zero;
 
-            return Navigator.CalculateFormationPosition(LastLeaderState, Config.StationOffset);
+            return Navigator.CalculateFormationPosition(LastLeaderState, StationOffset);
         }
 
         /// <summary>

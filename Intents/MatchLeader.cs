@@ -13,7 +13,10 @@ namespace IngameScript
                 return;
             }
 
-            ctx.Gyros.MatchCompassHeading(ctx.LastLeaderState.Forward, ctx.LastLeaderState.Up);
+            if (!ctx.Gyros.MatchCompassHeading(ctx.LastLeaderState.Forward, ctx.LastLeaderState.Up))
+            {
+                ctx.Gyros.OrientLevel();
+            }
         }
     }
 }

@@ -79,6 +79,8 @@ namespace IngameScript
             _gyros = gyros;
             _echo = echo;
             _orientationPID = new PIDController3D(pidGains);
+            // Clear any stale overrides from previous runs.
+            Release();
         }
 
         /// <summary>

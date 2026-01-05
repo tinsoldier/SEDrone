@@ -56,6 +56,7 @@ namespace IngameScript
             var block = Block;
             if (block == null || !block.IsFunctional)
             {
+                ctx.Debug?.Log("AlignBlock: Block missing or not functional");
                 ctx.Gyros.OrientLevel();
                 return;
             }
@@ -63,6 +64,7 @@ namespace IngameScript
             Vector3D targetDir = TargetDirection();
             if (targetDir.LengthSquared() < 0.1)
             {
+                ctx.Debug?.Log("AlignBlock: Target direction invalid");
                 ctx.Gyros.OrientLevel();
                 return;
             }
@@ -88,7 +90,11 @@ namespace IngameScript
                 }
             }
 
-            ctx.Gyros.AlignBlockToDirection(block, targetDir, desiredUp);
+            if (!ctx.Gyros.AlignBlockToDirection(block, targetDir, desiredUp))
+            {
+                ctx.Debug?.Log("AlignBlock: Gyro alignment failed");
+                ctx.Gyros.OrientLevel();
+            }
         }
     }
 }

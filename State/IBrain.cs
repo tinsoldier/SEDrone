@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
+using VRageMath;
 
 namespace IngameScript
 {
@@ -84,5 +85,8 @@ namespace IngameScript
 
         // === Docking (refhack/local) ===
         public DockingPadManager LocalDockingManager { get; set; }
+
+        // === Formation Offset Override ===
+        public Vector3D? StationOffsetOverride { get; set; }
     }
 }

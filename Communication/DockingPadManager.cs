@@ -233,6 +233,12 @@ namespace IngameScript
             _echo?.Invoke($"[DOCKING] Found {_availableConnectors.Count} available connectors");
         }
 
+        public void RefreshConnectors()
+        {
+            RefreshConnectorList();
+            _lastConnectorRefresh = 0;
+        }
+
         /// <summary>
         /// Cleans up stale assignments (drones that stopped requesting or docked successfully).
         /// Call this periodically.

@@ -161,7 +161,7 @@ namespace IngameScript
                 maxSpeed = LANDING_SPEED;
             }
 
-            ctx.Debug?.Log($"FastDock: {phase}");
+            //ctx.Debug?.Log($"FastDock: {phase}");
 
             // === Calculate Desired Velocity (Spug's approach) ===
             // Simple proportional control: velocity proportional to position error

@@ -109,7 +109,7 @@ namespace IngameScript
             var dockingOrientation = new AlignBlock(
                 droneConnector,
                 () => -helpers.GetTargetConnectorForward(),
-                () => ctx.Reference.WorldMatrix.Forward  // Maintain current heading
+                () => helpers.GetTargetConnectorUp()
             );
 
             // === PHASE 4: Execute Docking ===
@@ -157,6 +157,9 @@ namespace IngameScript
             private DroneContext _ctx;
             private DockingPadResponse _response;
             private IMyShipConnector _droneConnector;
+            private int _diagCounter;
+            private Vector3D _lastForward;
+            private Vector3D _lastUp;
 
             public FastDockHelpers(DroneContext ctx, DockingPadResponse response, IMyShipConnector droneConnector)
             {
@@ -178,16 +181,14 @@ namespace IngameScript
 
             public Vector3D GetTargetConnectorForward()
             {
-                if (!_ctx.HasLeaderContact) return Vector3D.Zero;
-                MatrixD coordMatrix = GetCoordinateMatrix();
-                return Vector3D.TransformNormal(_response.ConnectorForward, coordMatrix);
+                UpdateTargetBasis();
+                return _lastForward;
             }
 
             public Vector3D GetTargetConnectorUp()
             {
-                if (!_ctx.HasLeaderContact) return Vector3D.Zero;
-                MatrixD coordMatrix = GetCoordinateMatrix();
-                return Vector3D.TransformNormal(_response.ConnectorUp, coordMatrix);
+                UpdateTargetBasis();
+                return _lastUp;
             }
 
             public Vector3D GetTargetConnectorPosition()
@@ -215,6 +216,52 @@ namespace IngameScript
                     GetTargetConnectorUp(),
                     _ctx.LastLeaderState.Velocity
                 );
+            }
+
+            private void UpdateTargetBasis()
+            {
+                if (!_ctx.HasLeaderContact)
+                {
+                    _lastForward = Vector3D.Zero;
+                    _lastUp = Vector3D.Zero;
+                    return;
+                }
+
+                MatrixD coordMatrix = GetCoordinateMatrix();
+                _lastForward = Vector3D.TransformNormal(_response.ConnectorForward, coordMatrix);
+                _lastUp = Vector3D.TransformNormal(_response.ConnectorUp, coordMatrix);
+
+                _diagCounter++;
+                if (_diagCounter >= 30)
+                {
+                    _diagCounter = 0;
+                    LogOrientationDiagnostics(_lastForward, _lastUp);
+                }
+            }
+
+            private void LogOrientationDiagnostics(Vector3D forward, Vector3D up)
+            {
+                double forwardLen = forward.Length();
+                double upLen = up.Length();
+
+                double dot = 0;
+                if (forwardLen > 0.001 && upLen > 0.001)
+                {
+                    dot = Vector3D.Dot(forward / forwardLen, up / upLen);
+                }
+
+                if (!IsValid(forward) || !IsValid(up) || forwardLen < 0.5 || upLen < 0.5 || Math.Abs(dot) > 0.25)
+                {
+                    _ctx.Debug?.Log(
+                        $"FastDock: basis fLen={forwardLen:F2} uLen={upLen:F2} dot={dot:F2} leader={_ctx.HasLeaderContact}");
+                }
+            }
+
+            private static bool IsValid(Vector3D v)
+            {
+                return !double.IsNaN(v.X) && !double.IsInfinity(v.X)
+                    && !double.IsNaN(v.Y) && !double.IsInfinity(v.Y)
+                    && !double.IsNaN(v.Z) && !double.IsInfinity(v.Z);
             }
         }
     }

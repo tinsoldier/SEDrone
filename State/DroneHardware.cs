@@ -41,6 +41,15 @@ namespace IngameScript
             return hardware;
         }
 
+        public void RefreshConnectors(IMyGridTerminalSystem gts)
+        {
+            if (gts == null || GridId == 0)
+                return;
+
+            Connectors.Clear();
+            gts.GetBlocksOfType(Connectors, c => c.CubeGrid.EntityId == GridId);
+        }
+
         // TODO: Add Refresh(IMyGridTerminalSystem gts) for non-refhack mode to replace stale references.
     }
 }

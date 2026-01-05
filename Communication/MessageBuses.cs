@@ -144,26 +144,17 @@ namespace IngameScript
     {
         private LeaderStateMessage _latest;
         private bool _hasLatest;
-        private bool _hasNew;
 
         public void Publish(LeaderStateMessage state)
         {
             _latest = state;
             _hasLatest = true;
-            _hasNew = true;
         }
 
         public bool TryGetLatest(out LeaderStateMessage state)
         {
-            if (_hasNew)
-            {
-                _hasNew = false;
-                state = _latest;
-                return true;
-            }
-
             state = _latest;
-            return false;
+            return _hasLatest;
         }
     }
 }
