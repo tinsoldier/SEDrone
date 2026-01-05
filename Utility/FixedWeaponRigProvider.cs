@@ -18,14 +18,16 @@ namespace IngameScript
         private readonly System.Action<string> _echo;
         private readonly List<IMyTerminalBlock> _fixedWeapons = new List<IMyTerminalBlock>();
         private double _lastRefreshTime;
+        private readonly DroneHardware _hardware;
 
         private const double REFRESH_INTERVAL = 2.0;
 
-        public FixedWeaponRigProvider(IMyGridTerminalSystem gridTerminalSystem, IMyProgrammableBlock me, IMyTerminalBlock aimReference, Program.WcPbApi wcApi, System.Action<string> echo = null)
+        public FixedWeaponRigProvider(IMyGridTerminalSystem gridTerminalSystem, IMyProgrammableBlock me, IMyTerminalBlock aimReference, Program.WcPbApi wcApi, System.Action<string> echo = null, DroneHardware hardware = null)
         {
             _pb = me;
             _gridTerminalSystem = gridTerminalSystem;
-            _gridEntityId = me?.CubeGrid.EntityId ?? 0;
+            _hardware = hardware;
+            _gridEntityId = hardware?.GridId ?? me?.CubeGrid.EntityId ?? 0;
             _aimReference = aimReference;
             _wcApi = wcApi;
             _echo = echo;
@@ -93,6 +95,25 @@ namespace IngameScript
 
             var wcDefs = GetStaticLauncherDefs();
             if (wcDefs == null || wcDefs.Count == 0)
+                return;
+
+            if (_hardware != null && _hardware.WeaponBlocks.Count > 0)
+            {
+                for (int i = 0; i < _hardware.WeaponBlocks.Count; i++)
+                {
+                    var block = _hardware.WeaponBlocks[i];
+                    if (block != null &&
+                        block.IsFunctional &&
+                        block.CubeGrid.EntityId == _gridEntityId &&
+                        wcDefs.Contains(block.BlockDefinition))
+                    {
+                        _fixedWeapons.Add(block);
+                    }
+                }
+                return;
+            }
+
+            if (_gridTerminalSystem == null)
                 return;
 
             _gridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(

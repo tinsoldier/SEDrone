@@ -57,6 +57,16 @@ namespace IngameScript
         // === Shared Components ===
         public IMyShipController Reference { get; set; }
 
+        /// <summary>
+        /// Grid entity ID associated with this brain.
+        /// </summary>
+        public long GridId { get; set; }
+
+        /// <summary>
+        /// Optional pre-collected hardware set (ref-hack mode).
+        /// </summary>
+        public DroneHardware Hardware { get; set; }
+
         // === Runtime ===
         public double DeltaTime { get; set; }   // Seconds since last update
         public double GameTime { get; set; }    // Total game time in seconds

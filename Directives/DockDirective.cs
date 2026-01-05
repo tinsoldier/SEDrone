@@ -72,11 +72,22 @@ namespace IngameScript
             // Temporary helper to get target connector forward (before we have drone connector)
             var tempHelpers = new DockingHelpers(ctx, padResponse, null);
 
-            IMyShipConnector droneConnector = ctx.DockingNav.SelectDroneConnector(
-                ctx.GridTerminalSystem,
-                ctx.Me.CubeGrid.EntityId,
-                tempHelpers.GetTargetConnectorForward()
-            );
+            IMyShipConnector droneConnector;
+            if (ctx.Hardware != null && ctx.Hardware.Connectors.Count > 0)
+            {
+                droneConnector = ctx.DockingNav.SelectDroneConnector(
+                    ctx.Hardware.Connectors,
+                    tempHelpers.GetTargetConnectorForward()
+                );
+            }
+            else
+            {
+                droneConnector = ctx.DockingNav.SelectDroneConnector(
+                    ctx.GridTerminalSystem,
+                    ctx.GridId,
+                    tempHelpers.GetTargetConnectorForward()
+                );
+            }
 
             if (droneConnector == null)
             {

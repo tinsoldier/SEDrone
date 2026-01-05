@@ -52,6 +52,13 @@ namespace IngameScript
             var connectors = new List<IMyShipConnector>();
             gts.GetBlocksOfType(connectors, c => c.CubeGrid.EntityId == droneGridEntityId && c.IsFunctional);
 
+            return SelectDroneConnector(connectors, targetConnectorForward);
+        }
+
+        public IMyShipConnector SelectDroneConnector(
+            List<IMyShipConnector> connectors,
+            Vector3D targetConnectorForward)
+        {
             if (connectors.Count == 0)
                 return null;
 

@@ -53,6 +53,7 @@ namespace IngameScript
                 IGC = IGC,
                 Config = _config,
                 Reference = _reference,
+                GridId = _reference.CubeGrid.EntityId,
                 Echo = Echo,
                 GameTime = 0,
                 DeltaTime = GetDeltaTime()

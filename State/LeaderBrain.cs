@@ -35,6 +35,12 @@ namespace IngameScript
         public void Initialize(BrainContext context)
         {
             _context = context;
+            if (_context.GridId == 0)
+            {
+                _context.GridId = _context.Reference != null
+                    ? _context.Reference.CubeGrid.EntityId
+                    : _context.Me.CubeGrid.EntityId;
+            }
 
             // Register listener for docking requests
             string dockingChannel = context.Config.IGCChannel + "_DOCK_REQUEST";
@@ -112,7 +118,7 @@ namespace IngameScript
 
             var message = new LeaderStateMessage
             {
-                EntityId = _context.Me.CubeGrid.EntityId,
+                EntityId = _context.GridId,
                 GridName = _context.Me.CubeGrid.CustomName,
                 Position = matrix.Translation,
                 Velocity = velocity,
@@ -133,7 +139,7 @@ namespace IngameScript
 
             try
             {
-                var focus = _wcApi.GetAiFocus(_context.Me.CubeGrid.EntityId, 0);
+                var focus = _wcApi.GetAiFocus(_context.GridId, 0);
                 
                 //if focus has a valid value, return that, otherwise call GetSortedThreats and return the top threat, set that as the focus
                 if (focus.HasValue && focus.Value.EntityId != 0)

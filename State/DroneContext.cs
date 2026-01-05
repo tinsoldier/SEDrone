@@ -37,6 +37,11 @@ namespace IngameScript
         public IMyProgrammableBlock Me => _brain.Context.Me;
 
         /// <summary>
+        /// Grid entity ID associated with this drone.
+        /// </summary>
+        public long GridId => _brain.Context.GridId != 0 ? _brain.Context.GridId : Me.CubeGrid.EntityId;
+
+        /// <summary>
         /// Current game time in seconds.
         /// </summary>
         public double GameTime => _brain.Context.GameTime;
@@ -90,6 +95,11 @@ namespace IngameScript
         /// Writes to a text panel named "Debug" if present.
         /// </summary>
         public DebugLogger Debug { get; }
+
+        /// <summary>
+        /// Pre-collected hardware references (ref-hack mode).
+        /// </summary>
+        public DroneHardware Hardware => _brain.Context.Hardware;
 
         // === Hardware access (for executors) ===
 
@@ -230,7 +240,15 @@ namespace IngameScript
 
                 // Auto-detect: find any connected connector on our grid
                 var connectors = new System.Collections.Generic.List<IMyShipConnector>();
-                GridTerminalSystem.GetBlocksOfType(connectors, c => c.CubeGrid.EntityId == Me.CubeGrid.EntityId);
+                if (Hardware != null && Hardware.Connectors.Count > 0)
+                {
+                    connectors.AddRange(Hardware.Connectors);
+                }
+                else
+                {
+                    long gridId = GridId;
+                    GridTerminalSystem.GetBlocksOfType(connectors, c => c.CubeGrid.EntityId == gridId);
+                }
 
                 IMyShipConnector firstConnected = null;
                 foreach (var connector in connectors)

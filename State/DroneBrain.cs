@@ -89,14 +89,28 @@ namespace IngameScript
         public void Initialize(BrainContext context)
         {
             Context = context;
+            if (Context.GridId == 0)
+            {
+                Context.GridId = Context.Reference != null
+                    ? Context.Reference.CubeGrid.EntityId
+                    : Context.Me.CubeGrid.EntityId;
+            }
 
             // Register for IGC broadcasts
             _listener = context.IGC.RegisterBroadcastListener(context.Config.IGCChannel);
             _commandListener = context.IGC.RegisterBroadcastListener(context.Config.IGCChannel + "_COMMAND");
 
+            if (context.Hardware == null)
+            {
+                context.Hardware = DroneHardware.Capture(context.GridTerminalSystem, context.GridId, context.Reference);
+            }
+
             // Initialize gyro controller
-            var gyros = new List<IMyGyro>();
-            context.GridTerminalSystem.GetBlocksOfType(gyros, g => g.CubeGrid == context.Me.CubeGrid);
+            var gyros = context.Hardware.Gyros.Count > 0
+                ? context.Hardware.Gyros
+                : new List<IMyGyro>();
+            if (gyros.Count == 0)
+                context.GridTerminalSystem.GetBlocksOfType(gyros, g => g.CubeGrid.EntityId == context.GridId);
             Gyros = new GyroController(
                 context.Reference,
                 gyros,
@@ -105,8 +119,11 @@ namespace IngameScript
             );
 
             // Initialize thruster controller
-            var thrusters = new List<IMyThrust>();
-            context.GridTerminalSystem.GetBlocksOfType(thrusters, t => t.CubeGrid == context.Me.CubeGrid);
+            var thrusters = context.Hardware.Thrusters.Count > 0
+                ? context.Hardware.Thrusters
+                : new List<IMyThrust>();
+            if (thrusters.Count == 0)
+                context.GridTerminalSystem.GetBlocksOfType(thrusters, t => t.CubeGrid.EntityId == context.GridId);
             Thrusters = new ThrusterController(
                 context.Reference,
                 thrusters,
@@ -140,7 +157,7 @@ namespace IngameScript
             // Initialize drone context (passed to directives)
             _droneContext = new DroneContext(this, _tacticalContext, debugLogger);
 
-            WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, context.Reference, _wcApi, _droneContext.Debug.Log);
+            WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, context.Reference, _wcApi, _droneContext.Debug.Log, context.Hardware);
 
             // Set initial directive
             SetDirective(new EscortDirective());
@@ -343,7 +360,7 @@ namespace IngameScript
             ProjectileCount = 0;
             _projectilePositions.Clear();
 
-            long droneEntityId = Context.Me.CubeGrid.EntityId;
+            long droneEntityId = Context.GridId;
             long leaderEntityId = HasLeaderContact ? LastLeaderState.EntityId : 0;
 
             if (_isProjectileTrackingEnabled && _wcBridge != null && _wcBridge.IsReady && _wcBridge.IsWcApiReady)
@@ -555,7 +572,7 @@ namespace IngameScript
                     if (DroneCommandMessage.TryParse(data, out command))
                     {
                         // Check if command is for us (or broadcast to all)
-                        long myEntityId = Context.Me.CubeGrid.EntityId;
+                        long myEntityId = Context.GridId;
                         if (command.TargetDroneId == 0 || command.TargetDroneId == myEntityId)
                         {
                             ExecuteCommand(command.Command);

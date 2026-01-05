@@ -64,11 +64,22 @@ namespace IngameScript
 
             // === PHASE 2: Connector Selection ===
             var helpers = new FastDockHelpers(ctx, padResponse, null);
-            IMyShipConnector droneConnector = ctx.DockingNav.SelectDroneConnector(
-                ctx.GridTerminalSystem,
-                ctx.Me.CubeGrid.EntityId,
-                helpers.GetTargetConnectorForward()
-            );
+            IMyShipConnector droneConnector;
+            if (ctx.Hardware != null && ctx.Hardware.Connectors.Count > 0)
+            {
+                droneConnector = ctx.DockingNav.SelectDroneConnector(
+                    ctx.Hardware.Connectors,
+                    helpers.GetTargetConnectorForward()
+                );
+            }
+            else
+            {
+                droneConnector = ctx.DockingNav.SelectDroneConnector(
+                    ctx.GridTerminalSystem,
+                    ctx.GridId,
+                    helpers.GetTargetConnectorForward()
+                );
+            }
 
             if (droneConnector == null)
             {
