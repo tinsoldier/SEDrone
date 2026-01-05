@@ -162,7 +162,14 @@ namespace IngameScript
             WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, context.Reference, _wcApi, _droneContext.Debug.Log, context.Hardware);
 
             // Set initial directive
-            SetDirective(new EscortDirective());
+            if (_droneContext.IsDocked)
+            {
+                SetDirective(new DockedHoldDirective());
+            }
+            else
+            {
+                SetDirective(new EscortDirective());
+            }
 
             Status = $"G:{Gyros.GyroCount} T:{Thrusters.ThrusterCount} | {_currentDirective.Name}";
         }
