@@ -21,12 +21,17 @@ namespace IngameScript
         private const double TAU = 3.5;  // Try to close gap in 1.5 seconds
         private const double MIN_CLOSING_SPEED = 1.0;  // Minimum 1 m/s closing
         private const double DEFAULT_MAX_CLOSING_SPEED = 150.0;  // Default max closing speed
+        private const double MIN_CLOSE_SPEED_NEAR = 0.2;  // Allow very slow closure near target
 
         // === PID Tuning (for damping only) ===
         // With feed-forward closing velocity, PID is reduced to damping role
         private const double DEFAULT_KP = 2;  // Small proportional for fine correction
         private const double DEFAULT_KI = 0.2;  // No integral needed with feed-forward
         private const double DEFAULT_KD = 1.0;  // Derivative for damping oscillations
+        private const double HOLD_ENTER_SPEED = 0.75;
+        private const double HOLD_EXIT_SPEED = 1.5;
+        private const double HOLD_EXIT_MULTIPLIER = 1.5;
+        private const double NEAR_RADIUS_MULTIPLIER = 2.0;
 
         // === Target Configuration ===
         private readonly Func<Vector3D> _targetFunc;
@@ -44,6 +49,21 @@ namespace IngameScript
         // === Speed Limiting ===
         private readonly double _maxSpeed;
         private readonly double _maxClosingSpeed;
+        private bool _holdingStation;
+        private double _stationRadiusOverride = -1;
+        private double _holdEnterSpeedOverride = -1;
+        private double _holdExitSpeedOverride = -1;
+
+        public Move WithStopTuning(double stationRadius = -1, double holdEnterSpeed = -1, double holdExitSpeed = -1)
+        {
+            if (stationRadius > 0)
+                _stationRadiusOverride = stationRadius;
+            if (holdEnterSpeed > 0)
+                _holdEnterSpeedOverride = holdEnterSpeed;
+            if (holdExitSpeed > 0)
+                _holdExitSpeedOverride = holdExitSpeed;
+            return this;
+        }
 
         /// <summary>
         /// Target position evaluated each tick.
@@ -237,17 +257,34 @@ namespace IngameScript
                 targetSpeed = 0;
             }
 
-            // Station-keeping dampener handoff:
-            // ONLY release control if we're BOTH:
-            // 1. Near the target position (position error is small)
-            // 2. Moving slowly AND target is stationary/slow
-            // This prevents blocking initial acceleration from a stop
             double positionErrorMagnitude = positionError.Length();
-            if (targetSpeed < 0.1 && currentSpeed < 2.0 && positionErrorMagnitude < 0.1) // 0.1m for max precision
+            double stationRadius = _stationRadiusOverride > 0
+                ? _stationRadiusOverride
+                : Math.Max(ctx.Config.StationRadius, 0.1);
+            double holdEnterSpeed = _holdEnterSpeedOverride > 0 ? _holdEnterSpeedOverride : HOLD_ENTER_SPEED;
+            double holdExitSpeed = _holdExitSpeedOverride > 0 ? _holdExitSpeedOverride : HOLD_EXIT_SPEED;
+            if (targetSpeed < 0.1)
             {
-                //ctx.Debug?.Log("Move: holding station");
-                ctx.Thrusters.Release();
-                return;
+                if (_holdingStation)
+                {
+                    if (positionErrorMagnitude <= stationRadius * HOLD_EXIT_MULTIPLIER && currentSpeed <= holdExitSpeed)
+                    {
+                        ctx.Thrusters.Release();
+                        return;
+                    }
+
+                    _holdingStation = false;
+                }
+                else if (positionErrorMagnitude <= stationRadius && currentSpeed <= holdEnterSpeed)
+                {
+                    _holdingStation = true;
+                    ctx.Thrusters.Release();
+                    return;
+                }
+            }
+            else
+            {
+                _holdingStation = false;
             }
 
             // Adjust for braking distance to prevent overshoot (only at higher speeds)
@@ -280,7 +317,7 @@ namespace IngameScript
                 // Target is stationary - use direct velocity control with braking prediction
                 // This prevents the "gentle drift" problem of PID when target velocity = 0
 
-                double distance = positionError.Length();
+                double distance = positionErrorMagnitude;
                 if (distance > 0.1)
                 {
                     Vector3D direction = positionError / distance;
@@ -306,6 +343,12 @@ namespace IngameScript
                         targetApproachSpeed = Math.Sqrt(2.0 * distance * 10.0); // Assume ~10 m/s² decel
                         targetApproachSpeed = Math.Min(targetApproachSpeed, _maxSpeed > 0 ? _maxSpeed : 100.0);
                         targetApproachSpeed = Math.Max(targetApproachSpeed, 1.0); // Minimum 1 m/s
+                    }
+
+                    if (distance < stationRadius * NEAR_RADIUS_MULTIPLIER)
+                    {
+                        double slowSpeed = Math.Max(distance / TAU, MIN_CLOSE_SPEED_NEAR);
+                        targetApproachSpeed = Math.Min(targetApproachSpeed, slowSpeed);
                     }
 
                     desiredVelocity = direction * targetApproachSpeed;

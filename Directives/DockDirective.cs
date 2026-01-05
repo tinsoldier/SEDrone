@@ -134,7 +134,7 @@ namespace IngameScript
                             {
                                 // Check distance
                                 var dist = ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex]));
-                                if (dist >= 3.0)
+                                if (dist >= 5.0)
                                 {
                                     //ctx.Debug?.Log($"Dock: First waypoint dist:{dist:F2}m");
                                     return false;
@@ -194,7 +194,8 @@ namespace IngameScript
                     Position = new Move(
                         () => helpers.GetDockingApproachOffset(droneConnectorSize, targetConnectorSize),
                         () => helpers.GetConnectorReference(),
-                        closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed),
+                        closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed)
+                        .WithStopTuning(0.15, 0.3, 0.6),
                     Orientation = dockingOrientation,
                     // Measure from drone connector to target - not from ship controller
                     ExitWhen = () => Vector3D.Distance(droneConnector.GetPosition(), helpers.GetConnectorPosition()) < (droneConnectorSize + targetConnectorSize + 1.0)
@@ -211,7 +212,8 @@ namespace IngameScript
                     Position = new Move(
                         new Vector3D(0, 0, -finalApproachDistance),  // Local offset along connector -forward (approach)
                         () => helpers.GetConnectorReference(),
-                        closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed),
+                        closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed)
+                        .WithStopTuning(0.15, 0.3, 0.6),
                     Orientation = dockingOrientation,
                     ExitWhen = () =>
                     {
@@ -254,7 +256,8 @@ namespace IngameScript
                         Position = new Move(
                             new Vector3D(0, 0, -finalApproachDistance),  // Local offset along connector -forward (approach)
                             () => helpers.GetConnectorReference(),
-                            closingSpeed: ctx.Config.DockingLockSpeed, maxSpeed: ctx.Config.DockingLockSpeed),
+                            closingSpeed: ctx.Config.DockingLockSpeed, maxSpeed: ctx.Config.DockingLockSpeed)
+                            .WithStopTuning(0.15, 0.3, 0.6),
                         Orientation = dockingOrientation,
                         ExitWhen = () => {
                             droneConnector.Connect();
