@@ -40,5 +40,7 @@ namespace IngameScript
 
             return hardware;
         }
+
+        // TODO: Add Refresh(IMyGridTerminalSystem gts) for non-refhack mode to replace stale references.
     }
 }

@@ -105,12 +105,15 @@ namespace IngameScript
                 context.Hardware = DroneHardware.Capture(context.GridTerminalSystem, context.GridId, context.Reference);
             }
 
+            if (context.Hardware == null || !context.Hardware.IsValid())
+            {
+                Status = "Error: Missing drone hardware";
+                Echo?.Invoke("[Drone] Missing drone hardware (capture failed)");
+                return;
+            }
+
             // Initialize gyro controller
-            var gyros = context.Hardware.Gyros.Count > 0
-                ? context.Hardware.Gyros
-                : new List<IMyGyro>();
-            if (gyros.Count == 0)
-                context.GridTerminalSystem.GetBlocksOfType(gyros, g => g.CubeGrid.EntityId == context.GridId);
+            var gyros = context.Hardware.Gyros;
             Gyros = new GyroController(
                 context.Reference,
                 gyros,
@@ -119,11 +122,7 @@ namespace IngameScript
             );
 
             // Initialize thruster controller
-            var thrusters = context.Hardware.Thrusters.Count > 0
-                ? context.Hardware.Thrusters
-                : new List<IMyThrust>();
-            if (thrusters.Count == 0)
-                context.GridTerminalSystem.GetBlocksOfType(thrusters, t => t.CubeGrid.EntityId == context.GridId);
+            var thrusters = context.Hardware.Thrusters;
             Thrusters = new ThrusterController(
                 context.Reference,
                 thrusters,
