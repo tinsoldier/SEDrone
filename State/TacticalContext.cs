@@ -154,6 +154,41 @@ namespace IngameScript
             }
         }
 
+        public void UpdateEnemyTargets(IReadOnlyList<MyDetectedEntityInfo> enemyTargets)
+        {
+            _enemyTargets.Clear();
+            if (enemyTargets != null)
+            {
+                for (int i = 0; i < enemyTargets.Count; i++)
+                {
+                    _enemyTargets.Add(enemyTargets[i]);
+                }
+            }
+        }
+
+        public void ApplySnapshot(TacticalSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                ClearProjectileThreats();
+                _enemyTargets.Clear();
+                return;
+            }
+
+            _projectilePositions.Clear();
+            if (snapshot.HasPositionData && snapshot.ProjectilePositions != null)
+            {
+                _projectilePositions.AddRange(snapshot.ProjectilePositions);
+            }
+
+            ProjectileCount = snapshot.ProjectileCount;
+            HasPositionData = snapshot.HasPositionData;
+            IsDroneBeingTargetedByProjectiles = snapshot.IsDroneBeingTargetedByProjectiles;
+            IsLeaderBeingTargetedByProjectiles = snapshot.IsLeaderBeingTargetedByProjectiles;
+
+            UpdateEnemyTargets(snapshot.EnemyTargets);
+        }
+
         public ITargetTelemetry GetTargetTelemetry(long entityId)
         {
             if (entityId == 0)

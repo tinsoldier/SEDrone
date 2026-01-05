@@ -17,6 +17,10 @@ namespace IngameScript
         // === Hardware ===
         private IMyShipController _reference;
 
+        // === Tactical ===
+        private TacticalCoordinator _tacticalCoordinator;
+        private TacticalSnapshot _tacticalSnapshot;
+
         // === Timing ===
         private double _lastRunTime;
         private const double TICKS_PER_SECOND_1 = 1.0;
@@ -60,6 +64,11 @@ namespace IngameScript
                 GameTime = 0,
                 DeltaTime = GetDeltaTime()
             };
+
+            _tacticalCoordinator = new TacticalCoordinator(Me, Echo);
+            _tacticalSnapshot = new TacticalSnapshot();
+            _context.TacticalCoordinator = _tacticalCoordinator;
+            _context.SharedTacticalSnapshot = _tacticalSnapshot;
 
             // Select and initialize brain based on role
             SelectBrain();

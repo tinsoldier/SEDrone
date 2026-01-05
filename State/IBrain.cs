@@ -77,5 +77,9 @@ namespace IngameScript
         // === Shared Messaging ===
         public ICommandBus CommandBus { get; set; }
         public IStateBus<LeaderStateMessage> LeaderStateBus { get; set; }
+
+        // === Shared Tactical ===
+        public TacticalCoordinator TacticalCoordinator { get; set; }
+        public TacticalSnapshot SharedTacticalSnapshot { get; set; }
     }
 }
