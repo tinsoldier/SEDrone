@@ -125,7 +125,7 @@ namespace IngameScript
             private readonly Program.WcPbApi _wcApi;
             private readonly System.Action<string> _echo;
             private readonly HashSet<ulong> _seenProjectiles = new HashSet<ulong>();
-            private bool _monitorRegistered;
+            //private bool _monitorRegistered;
             private bool? _lastFireState;
             private double? _cachedMaxRange;
 
