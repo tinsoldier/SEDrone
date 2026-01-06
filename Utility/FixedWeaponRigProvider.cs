@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
-using VRage.Game;
 using VRage.Game.ModAPI.Ingame;
 using VRageMath;
 
@@ -9,7 +8,6 @@ namespace IngameScript
 {
     public class FixedWeaponRigProvider
     {
-        private static HashSet<MyDefinitionId> _staticLauncherDefs;
         private readonly IMyProgrammableBlock _pb;
         private readonly IMyGridTerminalSystem _gridTerminalSystem;
         private readonly long _gridEntityId;
@@ -93,50 +91,26 @@ namespace IngameScript
         {
             _fixedWeapons.Clear();
 
-            var wcDefs = GetStaticLauncherDefs();
-            if (wcDefs == null || wcDefs.Count == 0)
+            if (_hardware == null)
                 return;
 
-            if (_hardware != null && _hardware.WeaponBlocks.Count > 0)
+            if (_gridTerminalSystem != null)
+                _hardware.RefreshWeapons(_gridTerminalSystem, _wcApi);
+
+            var fixedWeapons = _hardware.FixedWeaponBlocks;
+            if (fixedWeapons == null || fixedWeapons.Count == 0)
+                return;
+
+            for (int i = 0; i < fixedWeapons.Count; i++)
             {
-                for (int i = 0; i < _hardware.WeaponBlocks.Count; i++)
+                var block = fixedWeapons[i];
+                if (block != null &&
+                    block.IsFunctional &&
+                    block.CubeGrid.EntityId == _gridEntityId)
                 {
-                    var block = _hardware.WeaponBlocks[i];
-                    if (block != null &&
-                        block.IsFunctional &&
-                        block.CubeGrid.EntityId == _gridEntityId &&
-                        wcDefs.Contains(block.BlockDefinition))
-                    {
-                        _fixedWeapons.Add(block);
-                    }
+                    _fixedWeapons.Add(block);
                 }
-                return;
             }
-
-            if (_gridTerminalSystem == null)
-                return;
-
-            _gridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(
-                _fixedWeapons,
-                b => b.CubeGrid.EntityId == _gridEntityId && b.IsFunctional && wcDefs.Contains(b.BlockDefinition));
-        }
-
-        private HashSet<MyDefinitionId> GetStaticLauncherDefs()
-        {
-            if (_staticLauncherDefs != null)
-                return _staticLauncherDefs;
-
-            if (_wcApi == null)
-                return null;
-
-            var defs = new HashSet<MyDefinitionId>();
-            _wcApi.GetAllCoreStaticLaunchers(defs);
-
-            // remove defs with "Flare" in the subtype name (these are not aimed weapons)
-            defs.RemoveWhere(d => d.SubtypeName.Contains("Flare"));
-
-            _staticLauncherDefs = defs;
-            return _staticLauncherDefs;
         }
 
         public class CompositeFixedWeaponRig : IFixedWeaponRig
