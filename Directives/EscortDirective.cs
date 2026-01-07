@@ -57,6 +57,12 @@ namespace IngameScript
                     bool hadThreats = ctx.Tactical.HasThreats;
                     bool leaderHasTargets = ctx.LastLeaderState.TargetEntityId != 0;
 
+                    // Debug: log leader target state
+                    if (leaderHasTargets)
+                    {
+                        ctx.Debug?.Log($"Escort: Leader targeting entity {ctx.LastLeaderState.TargetEntityId}");
+                    }
+
                     // Debug logging
                     // ctx.Debug?.Log($"Escort: approach={needsApproach} inFrm={ctx.IsInFormation()} dist={ctx.DistanceToFormation():F1}m");
                     // ctx.Debug?.Log($"  tgtVel={ctx.LastLeaderState.Velocity.Length():F1} m/s, threats={hadThreats}");

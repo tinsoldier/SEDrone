@@ -71,6 +71,10 @@ namespace IngameScript
             if (!EnsureWeaponDefs(wcApi))
                 return;
 
+            // Debug: log how many launcher defs we have
+            int launcherCount = _staticLauncherDefs?.Count ?? 0;
+            int turretCount = _staticTurretDefs?.Count ?? 0;
+
             gts.GetBlocksOfType<IMyTerminalBlock>(
                 WeaponBlocks,
                 b => b.CubeGrid.EntityId == GridId && IsWeaponDefinition(b.BlockDefinition));
@@ -96,6 +100,16 @@ namespace IngameScript
                         FixedWeaponBlocks.Add(block);
                 }
             }
+        }
+
+        /// <summary>
+        /// Gets a summary of weapon discovery for debugging.
+        /// </summary>
+        public string GetWeaponSummary()
+        {
+            int launcherDefs = _staticLauncherDefs?.Count ?? 0;
+            int turretDefs = _staticTurretDefs?.Count ?? 0;
+            return $"WpnDefs: {launcherDefs} launchers, {turretDefs} turrets | Grid {GridId}: {WeaponBlocks.Count} total, {FixedWeaponBlocks.Count} fixed, {TurretBlocks.Count} turrets";
         }
 
         private static bool EnsureWeaponDefs(Program.WcPbApi wcApi)

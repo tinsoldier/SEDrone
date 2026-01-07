@@ -15,10 +15,8 @@ namespace IngameScript
         private readonly Program.WcPbApi _wcApi;
         private readonly System.Action<string> _echo;
         private readonly List<IMyTerminalBlock> _fixedWeapons = new List<IMyTerminalBlock>();
-        private double _lastRefreshTime;
         private readonly DroneHardware _hardware;
-
-        private const double REFRESH_INTERVAL = 2.0;
+        private bool _initialized;
 
         public FixedWeaponRigProvider(IMyGridTerminalSystem gridTerminalSystem, IMyProgrammableBlock me, IMyTerminalBlock aimReference, Program.WcPbApi wcApi, System.Action<string> echo = null, DroneHardware hardware = null)
         {
@@ -29,18 +27,16 @@ namespace IngameScript
             _aimReference = aimReference;
             _wcApi = wcApi;
             _echo = echo;
+
+            // Capture weapons immediately at construction (while docked, WC API works)
+            // Don't refresh later - in RefHack mode, WC API won't work on undocked drone grids
+            CaptureWeaponsOnce();
         }
 
         public IFixedWeaponRig GetPrimaryFixedWeaponRig(double gameTime)
         {
-            if (_wcApi == null || _gridEntityId == 0)
+            if (_gridEntityId == 0)
                 return null;
-
-            if ((gameTime - _lastRefreshTime) > REFRESH_INTERVAL || _fixedWeapons.Count == 0)
-            {
-                Refresh();
-                _lastRefreshTime = gameTime;
-            }
 
             if (_fixedWeapons.Count == 0)
                 return null;
@@ -53,14 +49,8 @@ namespace IngameScript
 
         public IMyTerminalBlock GetPrimaryWeaponBlock(double gameTime)
         {
-            if (_wcApi == null || _gridEntityId == 0)
+            if (_gridEntityId == 0)
                 return null;
-
-            if ((gameTime - _lastRefreshTime) > REFRESH_INTERVAL || _fixedWeapons.Count == 0)
-            {
-                Refresh();
-                _lastRefreshTime = gameTime;
-            }
 
             if (_fixedWeapons.Count == 0)
                 return null;
@@ -70,7 +60,7 @@ namespace IngameScript
 
         public void StopAllWeapons()
         {
-            if (_wcApi == null || _fixedWeapons.Count == 0)
+            if (_fixedWeapons.Count == 0)
                 return;
                     
             //_wcApi.ReleaseAiFocus(_pb, 0);
@@ -87,19 +77,36 @@ namespace IngameScript
             }
         }
 
-        private void Refresh()
+        /// <summary>
+        /// Captures weapons once at initialization. Called from constructor while docked,
+        /// when WC API still works via the leader's PB. After undocking, we rely on cached data.
+        /// </summary>
+        private void CaptureWeaponsOnce()
         {
+            if (_initialized)
+                return;
+            _initialized = true;
+
             _fixedWeapons.Clear();
 
             if (_hardware == null)
+            {
+                _echo?.Invoke($"(WeaponRig) Hardware is null - cannot capture weapons");
                 return;
+            }
 
-            if (_gridTerminalSystem != null)
+            // Refresh weapon definitions while we can (docked = WC API works)
+            if (_gridTerminalSystem != null && _wcApi != null)
                 _hardware.RefreshWeapons(_gridTerminalSystem, _wcApi);
+
+            // Log weapon discovery summary
+            _echo?.Invoke($"(WeaponRig) {_hardware.GetWeaponSummary()}");
 
             var fixedWeapons = _hardware.FixedWeaponBlocks;
             if (fixedWeapons == null || fixedWeapons.Count == 0)
+            {
                 return;
+            }
 
             for (int i = 0; i < fixedWeapons.Count; i++)
             {
@@ -111,6 +118,8 @@ namespace IngameScript
                     _fixedWeapons.Add(block);
                 }
             }
+
+            _echo?.Invoke($"(WeaponRig) Captured {_fixedWeapons.Count} weapons for targeting");
         }
 
         public class CompositeFixedWeaponRig : IFixedWeaponRig

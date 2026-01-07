@@ -166,25 +166,14 @@ namespace IngameScript
             {
                 var focus = _wcApi.GetAiFocus(_context.GridId, 0);
                 
-                //if focus has a valid value, return that, otherwise call GetSortedThreats and return the top threat, set that as the focus
+                // Only return the player-selected focus target
+                // Don't auto-select - let the player control targeting
                 if (focus.HasValue && focus.Value.EntityId != 0)
                 {
-                    _context.Echo?.Invoke($"(Leader) Current focus targetId={focus.Value.EntityId}");
                     return focus.Value.EntityId;
                 }
-                else
-                {
-                    _context.Echo?.Invoke($"(Leader) Scanning for threats");
-                    _wcApi.GetSortedThreats(PB, _detectedEnemies);
-                    if (_detectedEnemies.Count > 0)
-                    {
-                        var entityId = _detectedEnemies.Keys.First().EntityId;
-                        _wcApi.SetAiFocus(_context.Me, entityId, 0);
-                        return entityId;
-                    }
-                    else
-                        return 0;
-                }
+                
+                return 0;
             }
             catch
             {
