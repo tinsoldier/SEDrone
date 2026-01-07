@@ -350,10 +350,11 @@ namespace IngameScript
             for (int i = 0; i < _refHackBrains.Count; i++)
             {
                 var droneBrain = _refHackBrains[i].Brain as DroneBrain;
-                if (droneBrain != null)
-                {
-                    droneBrain.Debug?.UpdatePerfStats(Runtime.LastRunTimeMs, _refHackBrains[i].Context.GameTime);
-                }
+                if (droneBrain == null)
+                    continue;
+
+                droneBrain.Debug?.UpdatePerfStats(Runtime.LastRunTimeMs, _refHackBrains[i].Context.GameTime);
+                break;
             }
         }
 
