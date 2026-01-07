@@ -219,10 +219,23 @@ namespace IngameScript
                 Echo("[RefHack] No docked drones detected on DronePad connectors.");
             }
 
+            // Assign formation indices to all drones
+            int droneCount = droneContexts.Count;
+            for (int i = 0; i < droneCount; i++)
+            {
+                droneContexts[i].FormationIndex = i;
+                droneContexts[i].FormationCount = droneCount;
+            }
+
             for (int i = 0; i < droneContexts.Count; i++)
             {
                 var droneBrain = new DroneBrain { PB = Me };
                 AddRefHackBrain(droneBrain, droneContexts[i]);
+            }
+
+            if (_config.DynamicFormation && droneCount > 0)
+            {
+                Echo($"[RefHack] Dynamic formation: {droneCount} drones in half-circle");
             }
         }
 

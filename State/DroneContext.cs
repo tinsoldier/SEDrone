@@ -22,12 +22,28 @@ namespace IngameScript
         public DroneConfig Config => _brain.Config;
 
         /// <summary>
-        /// Formation offset to use for this drone (override or config default).
+        /// Formation offset to use for this drone.
+        /// Uses dynamic formation if enabled and indices assigned, otherwise falls back to override or config.
         /// </summary>
         public Vector3D StationOffset
         {
             get
             {
+                // Dynamic formation takes priority when properly configured
+                if (Config.DynamicFormation &&
+                    _brain.Context.FormationIndex >= 0 &&
+                    _brain.Context.FormationCount > 0)
+                {
+                    return FormationNavigator.GetHalfCircleOffset(
+                        _brain.Context.FormationIndex,
+                        _brain.Context.FormationCount,
+                        Config.FormationRadius,
+                        Config.FormationBackOffset,
+                        Config.FormationVerticalOffset,
+                        Config.FormationRotation);
+                }
+
+                // Fall back to explicit override or static config
                 if (_brain.Context.StationOffsetOverride.HasValue)
                     return _brain.Context.StationOffsetOverride.Value;
                 return Config.StationOffset;

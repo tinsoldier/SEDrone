@@ -7,13 +7,61 @@ namespace IngameScript
     /// <summary>
     /// Handles all formation position and velocity calculations.
     /// Extracted from DroneBrain to provide reusable navigation logic.
-    /// 
+    ///
     /// This class is mostly stateless - calculations are based on parameters.
     /// Config reference is kept for accessing tuning values.
     /// </summary>
     public class FormationNavigator
     {
         private readonly DroneConfig _config;
+
+        // === Dynamic Formation Calculation ===
+
+        /// <summary>
+        /// Calculates a formation offset for a half-circle arrangement around the leader.
+        /// Drones spread across 180 degrees, centered on the rotation angle.
+        /// </summary>
+        /// <param name="index">This drone's index (0-based)</param>
+        /// <param name="count">Total number of drones</param>
+        /// <param name="radius">Distance from the arc center</param>
+        /// <param name="backOffset">Longitudinal offset from leader (negative Z = behind)</param>
+        /// <param name="verticalOffset">Vertical offset from leader (Y)</param>
+        /// <param name="rotationDegrees">Rotation of formation center (0=front, 180=behind)</param>
+        /// <returns>Local offset in leader space (X=right, Y=up, Z=forward)</returns>
+        public static Vector3D GetHalfCircleOffset(int index, int count, double radius, double backOffset, double verticalOffset, double rotationDegrees)
+        {
+            if (count <= 0 || index < 0 || index >= count)
+                return new Vector3D(0, verticalOffset, backOffset);
+
+            // Base rotation (convert degrees to radians)
+            double baseAngle = rotationDegrees * Math.PI / 180.0;
+
+            // Spread angle for this drone within the formation
+            double spreadAngle;
+            if (count == 1)
+            {
+                spreadAngle = 0; // Single drone: at center of formation
+            }
+            else
+            {
+                // Spread across ~162 degrees, leaving small gaps at edges
+                double sweepAngle = Math.PI * 0.9;
+                double halfSweep = sweepAngle / 2;
+                double step = sweepAngle / (count - 1);
+                spreadAngle = -halfSweep + step * index;
+            }
+
+            // Total angle = base rotation + spread offset
+            double angle = baseAngle + spreadAngle;
+
+            // Convert angle to offset (in leader-local space)
+            // At angle=0: x=0, z=+radius (front)
+            // At angle=180°: x=0, z=-radius (behind)
+            double x = radius * Math.Sin(angle);
+            double z = radius * Math.Cos(angle) + backOffset;
+
+            return new Vector3D(x, verticalOffset, z);
+        }
 
         // === Velocity calculation gains ===
         // These control the responsiveness of formation keeping

@@ -88,5 +88,16 @@ namespace IngameScript
 
         // === Formation Offset Override ===
         public Vector3D? StationOffsetOverride { get; set; }
+
+        // === Dynamic Formation ===
+        /// <summary>
+        /// This drone's index in the formation (0-based). -1 means not assigned.
+        /// </summary>
+        public int FormationIndex { get; set; } = -1;
+
+        /// <summary>
+        /// Total number of drones in the formation. 0 means unknown/not using dynamic formation.
+        /// </summary>
+        public int FormationCount { get; set; } = 0;
     }
 }

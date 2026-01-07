@@ -33,9 +33,17 @@ namespace IngameScript
         // === Station Keeping ===
         // Offset in target-local coordinates
         // X = right (+) / left (-)
-        // Y = up (+) / down (-)  
+        // Y = up (+) / down (-)
         // Z = forward (+) / backward (-)
         public Vector3D StationOffset { get; set; } = new Vector3D(30, 30, -30);
+
+        // === Dynamic Formation ===
+        // When enabled, drones auto-arrange in formation rather than using fixed StationOffset
+        public bool DynamicFormation { get; set; } = false;
+        public double FormationRadius { get; set; } = 40.0;       // Arc radius (meters)
+        public double FormationBackOffset { get; set; } = -20.0;  // Distance behind leader (negative Z)
+        public double FormationVerticalOffset { get; set; } = 5.0; // Height above leader (Y)
+        public double FormationRotation { get; set; } = 180.0;    // Rotation in degrees (0=front, 180=behind)
 
         // === Flight Parameters ===
         public double MaxSpeed { get; set; } = 100.0;           // Hard speed cap (m/s)
@@ -99,6 +107,13 @@ namespace IngameScript
             double offsetUp = ini.Get("Station", "OffsetUp").ToDouble(config.StationOffset.Y);
             double offsetForward = ini.Get("Station", "OffsetForward").ToDouble(config.StationOffset.Z);
             config.StationOffset = new Vector3D(offsetRight, offsetUp, offsetForward);
+
+            // === Formation Section ===
+            config.DynamicFormation = ini.Get("Formation", "Dynamic").ToBoolean(config.DynamicFormation);
+            config.FormationRadius = ini.Get("Formation", "Radius").ToDouble(config.FormationRadius);
+            config.FormationBackOffset = ini.Get("Formation", "BackOffset").ToDouble(config.FormationBackOffset);
+            config.FormationVerticalOffset = ini.Get("Formation", "VerticalOffset").ToDouble(config.FormationVerticalOffset);
+            config.FormationRotation = ini.Get("Formation", "Rotation").ToDouble(config.FormationRotation);
 
             // === Flight Section ===
             config.MaxSpeed = ini.Get("Flight", "MaxSpeed").ToDouble(config.MaxSpeed);
@@ -243,9 +258,22 @@ GridName=Player Rover
 [Station]
 ; Offset from target in LOCAL coordinates
 ; Right(+)/Left(-), Up(+)/Down(-), Forward(+)/Back(-)
+; Only used when Formation.Dynamic=false
 OffsetRight=30
 OffsetUp=30
 OffsetForward=-30
+
+[Formation]
+; Dynamic formation: drones auto-arrange in half-circle behind leader
+Dynamic=true
+; Arc radius in meters (distance from formation center)
+Radius=40
+; Distance behind leader center (negative = behind)
+BackOffset=-20
+; Height above leader
+VerticalOffset=5
+; Rotation of formation arc in degrees (0=front, 180=behind)
+Rotation=180
 
 [Flight]
 ; Speed limits (m/s)
