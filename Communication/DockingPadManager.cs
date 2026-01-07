@@ -70,8 +70,8 @@ namespace IngameScript
                 return CreateResponse(request, existingAssignment.Connector, currentTime);
             }
 
-            // Find an available connector
-            IMyShipConnector selectedConnector = SelectAvailableConnector();
+            // Find the closest available connector to the drone
+            IMyShipConnector selectedConnector = SelectClosestAvailableConnector(request.DronePosition);
 
             if (selectedConnector == null)
             {
@@ -118,10 +118,10 @@ namespace IngameScript
                 };
             }
 
-            // Calculate connector position relative to leader reference
+            // Calculate connector position relative to grid center (matches LeaderStateMessage.Position)
             Vector3D connectorWorldPos = connector.GetPosition();
-            Vector3D leaderPos = _reference.GetPosition();
-            Vector3D offsetWorld = connectorWorldPos - leaderPos;
+            Vector3D gridCenter = _reference.CubeGrid.WorldVolume.Center;
+            Vector3D offsetWorld = connectorWorldPos - gridCenter;
 
             // Build coordinate matrix from forward/up to match LeaderStateMessage.WorldMatrix.
             // CRITICAL: Use the exact same formula on both encoding and decoding sides!
@@ -130,7 +130,7 @@ namespace IngameScript
             Vector3D leaderUp = refMatrix.Up;
 
             MatrixD coordinateMatrix = MatrixD.CreateWorld(
-                leaderPos,
+                gridCenter,
                 leaderForward,
                 leaderUp
             );
@@ -174,10 +174,13 @@ namespace IngameScript
         }
 
         /// <summary>
-        /// Selects an available connector that isn't already assigned or connected.
+        /// Selects the closest available connector to the drone's position.
         /// </summary>
-        private IMyShipConnector SelectAvailableConnector()
+        private IMyShipConnector SelectClosestAvailableConnector(Vector3D dronePosition)
         {
+            IMyShipConnector closest = null;
+            double closestDistSq = double.MaxValue;
+
             foreach (var connector in _availableConnectors)
             {
                 // Skip if not functional
@@ -199,11 +202,19 @@ namespace IngameScript
                     }
                 }
 
-                if (!isAssigned)
-                    return connector;
+                if (isAssigned)
+                    continue;
+
+                // Check distance to drone
+                double distSq = Vector3D.DistanceSquared(connector.GetPosition(), dronePosition);
+                if (distSq < closestDistSq)
+                {
+                    closestDistSq = distSq;
+                    closest = connector;
+                }
             }
 
-            return null;
+            return closest;
         }
 
         /// <summary>

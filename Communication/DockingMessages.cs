@@ -10,6 +10,7 @@ namespace IngameScript
         public long DroneEntityId;      // Requesting drone's entity ID
         public string DroneGridName;    // Drone's grid name
         public long RequestId;          // Unique request ID for tracking response
+        public Vector3D DronePosition;  // Drone's current world position (for closest pad selection)
         public double Timestamp;        // When request was sent
 
         public string Serialize()
@@ -19,6 +20,7 @@ namespace IngameScript
                 DroneEntityId,
                 DroneGridName,
                 RequestId,
+                DronePosition.X, DronePosition.Y, DronePosition.Z,
                 Timestamp
             );
         }
@@ -31,7 +33,7 @@ namespace IngameScript
                 return false;
 
             string[] parts = data.Split('|');
-            if (parts.Length < 5 || parts[0] != "DOCK_REQUEST")
+            if (parts.Length < 8 || parts[0] != "DOCK_REQUEST")
                 return false;
 
             try
@@ -39,7 +41,12 @@ namespace IngameScript
                 request.DroneEntityId = long.Parse(parts[1]);
                 request.DroneGridName = parts[2];
                 request.RequestId = long.Parse(parts[3]);
-                request.Timestamp = double.Parse(parts[4]);
+                request.DronePosition = new Vector3D(
+                    double.Parse(parts[4]),
+                    double.Parse(parts[5]),
+                    double.Parse(parts[6])
+                );
+                request.Timestamp = double.Parse(parts[7]);
                 return true;
             }
             catch

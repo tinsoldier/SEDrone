@@ -27,7 +27,7 @@ namespace IngameScript
         {
             ctx.Debug?.Log($"Dock: Starting Docking");
             // === PHASE 1: Request Docking Pad ===
-            PendingDockingRequest padRequest = ctx.IGCRequests.RequestDockingPad(ctx.GameTime);
+            PendingDockingRequest padRequest = ctx.IGCRequests.RequestDockingPad(ctx.GameTime, ctx.Position);
 
             // Wait for response (Azure Durable Functions-style await pattern)
             while (padRequest.IsPending)

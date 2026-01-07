@@ -69,7 +69,10 @@ namespace IngameScript
         /// Sends a docking pad request and returns a pending request handle.
         /// The directive should yield and check IsPending() until complete.
         /// </summary>
-        public PendingDockingRequest RequestDockingPad(double currentTime, double timeout = 5.0)
+        /// <param name="currentTime">Current game time</param>
+        /// <param name="dronePosition">Drone's current world position (for closest pad selection)</param>
+        /// <param name="timeout">Request timeout in seconds</param>
+        public PendingDockingRequest RequestDockingPad(double currentTime, VRageMath.Vector3D dronePosition, double timeout = 5.0)
         {
             long requestId = _nextRequestId++;
 
@@ -78,6 +81,7 @@ namespace IngameScript
                 DroneEntityId = _droneEntityId,
                 DroneGridName = _droneGridName,
                 RequestId = requestId,
+                DronePosition = dronePosition,
                 Timestamp = currentTime
             };
 

@@ -132,11 +132,14 @@ namespace IngameScript
             var matrix = _context.Reference.WorldMatrix;
             var velocity = _context.Reference.GetShipVelocities().LinearVelocity;
 
+            // Use grid center for formation anchor (more predictable than cockpit position)
+            var gridCenter = _context.Reference.CubeGrid.WorldVolume.Center;
+
             var message = new LeaderStateMessage
             {
                 EntityId = _context.GridId,
                 GridName = _context.Me.CubeGrid.CustomName,
-                Position = matrix.Translation,
+                Position = gridCenter,
                 Velocity = velocity,
                 Forward = matrix.Forward,
                 Up = matrix.Up,

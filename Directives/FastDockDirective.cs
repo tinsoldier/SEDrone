@@ -24,7 +24,7 @@ namespace IngameScript
             ctx.Debug?.Log("FastDock: Starting");
 
             // === PHASE 1: Request Docking Pad ===
-            PendingDockingRequest padRequest = ctx.IGCRequests.RequestDockingPad(ctx.GameTime);
+            PendingDockingRequest padRequest = ctx.IGCRequests.RequestDockingPad(ctx.GameTime, ctx.Position);
 
             // Wait for response
             while (padRequest.IsPending)
