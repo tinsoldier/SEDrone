@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using VRageMath;
 
 namespace IngameScript
@@ -53,6 +54,32 @@ namespace IngameScript
         private double _stationRadiusOverride = -1;
         private double _holdEnterSpeedOverride = -1;
         private double _holdExitSpeedOverride = -1;
+
+        // === Potential Field Exclusions ===
+        private readonly HashSet<long> _exclusions = new HashSet<long>();
+        private readonly List<Func<long>> _deferredExclusions = new List<Func<long>>();
+
+        /// <summary>
+        /// Adds a static entity ID to the exclusion list.
+        /// Excluded entities won't generate repulsion forces.
+        /// </summary>
+        public Move WithExclusion(long entityId)
+        {
+            if (entityId != 0)
+                _exclusions.Add(entityId);
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a dynamic entity ID provider to the exclusion list.
+        /// Evaluated each tick - useful for leader ID that may change.
+        /// </summary>
+        public Move WithExclusion(Func<long> entityIdProvider)
+        {
+            if (entityIdProvider != null)
+                _deferredExclusions.Add(entityIdProvider);
+            return this;
+        }
 
         public Move WithStopTuning(double stationRadius = -1, double holdEnterSpeed = -1, double holdExitSpeed = -1)
         {
@@ -429,6 +456,34 @@ namespace IngameScript
             {
                 ctx.Thrusters.Release();
                 return;
+            }
+
+            // Apply potential field repulsion for obstacle avoidance
+            if (ctx.FieldResolver != null)
+            {
+                // Build effective exclusion set (static + deferred)
+                HashSet<long> effectiveExclusions = _exclusions;
+                if (_deferredExclusions.Count > 0)
+                {
+                    effectiveExclusions = new HashSet<long>(_exclusions);
+                    foreach (var provider in _deferredExclusions)
+                    {
+                        long id = provider();
+                        if (id != 0)
+                            effectiveExclusions.Add(id);
+                    }
+                }
+
+                Vector3D repulsion = ctx.FieldResolver.ComputeRepulsion(
+                    ctx.Position,
+                    currentVelocity,
+                    effectiveExclusions
+                );
+
+                if (IsValid(repulsion))
+                {
+                    desiredVelocity += repulsion;
+                }
             }
 
             // Command thrusters - controller handles force calculation and transforms

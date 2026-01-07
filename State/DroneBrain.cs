@@ -34,6 +34,7 @@ namespace IngameScript
         public ThrusterController Thrusters { get; private set; }
         public FormationNavigator Navigator { get; private set; }
         public DockingNavigator DockingNav { get; private set; }
+        public PotentialFieldResolver FieldResolver { get; private set; }
         public DebugLogger Debug => _droneContext?.Debug;
         public FixedWeaponRigProvider WeaponRigs { get; private set; }
         public Program.WcPbApi WcApi { get { return _wcApi; } }
@@ -150,11 +151,14 @@ namespace IngameScript
             // Initialize WeaponCore APIs
             InitializeWeaponCore(context);
 
+            // Initialize debug logger (writes to PB Echo) - before FieldResolver so it can use it
+            var debugLogger = new DebugLogger(context.Echo, () => context.GameTime);
+
+            // Initialize potential field resolver for obstacle avoidance
+            InitializeFieldResolver(context, debugLogger);
+
             // Initialize tactical context
             _tacticalContext = new TacticalContext(_wcApi, context.Echo);
-
-            // Initialize debug logger (writes to PB Echo)
-            var debugLogger = new DebugLogger(context.Echo, () => context.GameTime);
 
             // Initialize drone context (passed to directives)
             _droneContext = new DroneContext(this, _tacticalContext, debugLogger);
@@ -194,6 +198,30 @@ namespace IngameScript
                 _wcApi = null;
                 context.Echo?.Invoke("[Drone] WeaponCore not detected");
             }
+        }
+
+        private void InitializeFieldResolver(BrainContext context, DebugLogger debugLogger)
+        {
+            if (!context.Config.FieldConfig.Enabled)
+                return;
+
+            Action<string> log = debugLogger != null ? (Action<string>)debugLogger.Log : null;
+
+            // Build obstacle provider (WcApi if available)
+            IObstacleProvider provider = null;
+            if (_wcApi != null)
+            {
+                provider = new WcApiObstacleProvider(_wcApi, context.Me, context.GridId, log);
+            }
+
+            // Create resolver (terrain avoidance works even without providers)
+            FieldResolver = new PotentialFieldResolver(
+                provider,
+                context.Config.FieldConfig,
+                context.Reference,
+                context.GridId,
+                log  // Pass debug logging through DebugLogger
+            );
         }
 
         /// <summary>

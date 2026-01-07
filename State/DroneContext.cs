@@ -137,6 +137,12 @@ namespace IngameScript
         public DockingNavigator DockingNav => _brain.DockingNav;
 
         /// <summary>
+        /// Potential field resolver for obstacle avoidance.
+        /// May be null if not configured or no providers available.
+        /// </summary>
+        public PotentialFieldResolver FieldResolver => _brain.FieldResolver;
+
+        /// <summary>
         /// Fixed weapon rig provider.
         /// </summary>
         public FixedWeaponRigProvider WeaponRigs => _brain.WeaponRigs;

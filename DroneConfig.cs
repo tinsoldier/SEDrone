@@ -61,6 +61,9 @@ namespace IngameScript
         // === Thrust Control ===
         public ThrustConfig ThrustConfig { get; set; } = new ThrustConfig();
 
+        // === Potential Field Avoidance ===
+        public PotentialFieldConfig FieldConfig { get; set; } = new PotentialFieldConfig();
+
         // === Timing ===
         public int UpdateFrequency { get; set; } = 10;          // Updates per second (1, 10, 100)
         public double PredictionTime { get; set; } = 0.5;       // How far ahead to predict target (seconds)
@@ -121,6 +124,9 @@ namespace IngameScript
             // === Thrust Section ===
             config.ThrustConfig = ParseThrustConfig(ini, config.ThrustConfig);
 
+            // === Potential Field Section ===
+            config.FieldConfig = ParsePotentialFieldConfig(ini, config.FieldConfig);
+
             // === Advanced Section ===
             config.UpdateFrequency = ini.Get("Advanced", "UpdateFrequency").ToInt32(config.UpdateFrequency);
             config.PredictionTime = ini.Get("Advanced", "PredictionTime").ToDouble(config.PredictionTime);
@@ -171,6 +177,26 @@ namespace IngameScript
             // Braking
             config.AccelerationFactor = ini.Get("Thrust", "AccelerationFactor").ToDouble(defaults.AccelerationFactor);
             
+            return config;
+        }
+
+        /// <summary>
+        /// Parses potential field configuration from INI.
+        /// </summary>
+        private static PotentialFieldConfig ParsePotentialFieldConfig(MyIni ini, PotentialFieldConfig defaults)
+        {
+            var config = new PotentialFieldConfig();
+
+            config.Enabled = ini.Get("PotentialField", "Enabled").ToBoolean(defaults.Enabled);
+            config.InfluenceRadius = ini.Get("PotentialField", "InfluenceRadius").ToDouble(defaults.InfluenceRadius);
+            config.RepulsionStrength = ini.Get("PotentialField", "RepulsionStrength").ToDouble(defaults.RepulsionStrength);
+            config.MaxRepulsionSpeed = ini.Get("PotentialField", "MaxRepulsionSpeed").ToDouble(defaults.MaxRepulsionSpeed);
+            config.DroneMultiplier = ini.Get("PotentialField", "DroneMultiplier").ToDouble(defaults.DroneMultiplier);
+            config.TerrainMultiplier = ini.Get("PotentialField", "TerrainMultiplier").ToDouble(defaults.TerrainMultiplier);
+            config.RandomnessFactor = ini.Get("PotentialField", "RandomnessFactor").ToDouble(defaults.RandomnessFactor);
+            config.UpdateInterval = ini.Get("PotentialField", "UpdateInterval").ToInt32(defaults.UpdateInterval);
+            config.MaxObstacles = ini.Get("PotentialField", "MaxObstacles").ToInt32(defaults.MaxObstacles);
+
             return config;
         }
 
@@ -280,6 +306,26 @@ HoverPadPatterns=Hover
 ; Braking safety factor (0.0-1.0, lower = more conservative)
 AccelerationFactor=0.7
 
+[PotentialField]
+; Enable/disable obstacle avoidance
+Enabled=true
+; Maximum distance to detect obstacles (meters)
+InfluenceRadius=100
+; Base repulsion strength (higher = stronger avoidance)
+RepulsionStrength=500
+; Maximum avoidance velocity (m/s)
+MaxRepulsionSpeed=15
+; Multiplier for avoiding other drones (>1 = more aggressive)
+DroneMultiplier=1.5
+; Multiplier for ground avoidance (>1 = more aggressive)
+TerrainMultiplier=2.0
+; Per-drone randomness to break deadlocks (0-1)
+RandomnessFactor=0.2
+; Obstacle cache update interval (ticks, 6 = ~10Hz)
+UpdateInterval=6
+; Max obstacles to consider (limits computation)
+MaxObstacles=10
+
 [Advanced]
 ; Updates per second: 1, 10, or 100
 UpdateFrequency=10
@@ -301,9 +347,9 @@ PredictionTime=0.5
         public double Deadband;       // Error below which integral stops accumulating
         public double IntegralDecay;  // Decay factor per tick (0.995 = 0.5% decay)
 
-        public PIDGains(double kp, double ki, double kd, 
-                        double integralLimit = 10.0, 
-                        double deadband = 0.3, 
+        public PIDGains(double kp, double ki, double kd,
+                        double integralLimit = 10.0,
+                        double deadband = 0.3,
                         double integralDecay = 0.995)
         {
             Kp = kp;
@@ -313,5 +359,65 @@ PredictionTime=0.5
             Deadband = deadband;
             IntegralDecay = integralDecay;
         }
+    }
+
+    /// <summary>
+    /// Configuration for potential field obstacle avoidance.
+    /// </summary>
+    public class PotentialFieldConfig
+    {
+        /// <summary>
+        /// Whether potential field avoidance is enabled.
+        /// </summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>
+        /// Maximum distance to detect obstacles (meters).
+        /// Obstacles beyond this range are ignored.
+        /// </summary>
+        public double InfluenceRadius { get; set; } = 100;
+
+        /// <summary>
+        /// Base repulsion strength constant.
+        /// Higher values = stronger avoidance at any distance.
+        /// </summary>
+        public double RepulsionStrength { get; set; } = 500;
+
+        /// <summary>
+        /// Maximum velocity added by repulsion (m/s).
+        /// Caps the avoidance response to prevent erratic movement.
+        /// </summary>
+        public double MaxRepulsionSpeed { get; set; } = 15;
+
+        /// <summary>
+        /// Multiplier for drone-type obstacles.
+        /// Values > 1 make drones avoid each other more aggressively.
+        /// </summary>
+        public double DroneMultiplier { get; set; } = 4.0;
+
+        /// <summary>
+        /// Multiplier for terrain obstacles.
+        /// Values > 1 provide stronger ground avoidance.
+        /// </summary>
+        public double TerrainMultiplier { get; set; } = 0;
+
+        /// <summary>
+        /// Per-drone randomness factor (0-1).
+        /// Creates asymmetric responses to help break deadlocks.
+        /// 0 = identical behavior, 1 = up to +/-50% variation.
+        /// </summary>
+        public double RandomnessFactor { get; set; } = 0.2;
+
+        /// <summary>
+        /// How often to update obstacle cache (ticks).
+        /// Higher values reduce computation but may miss fast-moving obstacles.
+        /// </summary>
+        public int UpdateInterval { get; set; } = 6;
+
+        /// <summary>
+        /// Maximum number of obstacles to consider per update.
+        /// Limits computation for dense environments.
+        /// </summary>
+        public int MaxObstacles { get; set; } = 10;
     }
 }

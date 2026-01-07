@@ -69,7 +69,8 @@ namespace IngameScript
             // Move to clear position
             yield return new BehaviorIntent
             {
-                Position = new Move(leaderLocalOffset, () => ctx.LastLeaderState),
+                Position = new Move(leaderLocalOffset, () => ctx.LastLeaderState)
+                    .WithExclusion(() => ctx.LastLeaderState.EntityId),
                 Orientation = new StayLevel(),
                 ExitWhen = () => ctx.DistanceTo(dynamicWorldTarget()) < 3.0
             };
