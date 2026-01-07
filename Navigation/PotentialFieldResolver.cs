@@ -24,6 +24,7 @@ namespace IngameScript
 
         // Obstacle cache for performance
         private List<Obstacle> _cachedObstacles = new List<Obstacle>();
+        private List<KeyValuePair<double, Obstacle>> _tempObstacleList = new List<KeyValuePair<double, Obstacle>>();
         private int _updateCounter = 0;
         private int _lastRawObstacleCount = 0;
 
@@ -203,30 +204,30 @@ namespace IngameScript
             double effectiveRadius = _config.InfluenceRadius * _personalInfluenceMultiplier;
             var obstacles = _obstacleProvider.GetNearbyObstacles(position, effectiveRadius);
 
-            // Collect and sort by distance, take nearest N
-            var tempList = new List<KeyValuePair<double, Obstacle>>();
+            // Collect and sort by distance, take nearest N (reuse pooled list)
+            _tempObstacleList.Clear();
             foreach (var obstacle in obstacles)
             {
                 double distSq = Vector3D.DistanceSquared(position, obstacle.Position);
-                tempList.Add(new KeyValuePair<double, Obstacle>(distSq, obstacle));
+                _tempObstacleList.Add(new KeyValuePair<double, Obstacle>(distSq, obstacle));
             }
 
-            _lastRawObstacleCount = tempList.Count;
+            _lastRawObstacleCount = _tempObstacleList.Count;
 
             // Sort by distance (nearest first)
-            tempList.Sort((a, b) => a.Key.CompareTo(b.Key));
+            _tempObstacleList.Sort((a, b) => a.Key.CompareTo(b.Key));
 
             // Take up to MaxObstacles
-            int count = Math.Min(tempList.Count, _config.MaxObstacles);
+            int count = Math.Min(_tempObstacleList.Count, _config.MaxObstacles);
             for (int i = 0; i < count; i++)
             {
-                _cachedObstacles.Add(tempList[i].Value);
+                _cachedObstacles.Add(_tempObstacleList[i].Value);
             }
 
             // Log obstacle counts
             if (_log != null && _lastRawObstacleCount > 0)
             {
-                double nearestDist = count > 0 ? Math.Sqrt(tempList[0].Key) : 0;
+                double nearestDist = count > 0 ? Math.Sqrt(_tempObstacleList[0].Key) : 0;
                 _log($"PF: {_lastRawObstacleCount} raw, {count} used, nearest={nearestDist:F1}m");
             }
         }
