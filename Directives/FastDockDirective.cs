@@ -130,6 +130,7 @@ namespace IngameScript
                 ctx.Debug?.Log("FastDock: Connected!");
                 ctx.ActiveConnector = droneConnector;
                 ctx.SetDampeners(false);
+                ctx.Gyros?.Release();  // Clear gyro overrides while docked
 
                 // Stay docked until disconnected
                 yield return new BehaviorIntent

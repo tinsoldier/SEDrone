@@ -286,13 +286,14 @@ namespace IngameScript
                     if (droneConnector.Status == MyShipConnectorStatus.Connected)
                     {
                         // === PHASE 7: Docked - remain until undocked ===
-                        
+
                         // Store connector reference for other code to check docked state
                         ctx.ActiveConnector = droneConnector;
-                        
-                        // Disable dampeners to avoid fighting parent grid movement
+
+                        // Disable dampeners and gyro overrides to avoid fighting parent grid
                         ctx.SetDampeners(false);
-                        
+                        ctx.Gyros?.Release();
+
                         // Wait while docked - exit when disconnected
                         while (droneConnector.Status == MyShipConnectorStatus.Connected)
                         {

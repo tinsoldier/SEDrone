@@ -14,6 +14,7 @@ namespace IngameScript
             if (ctx.IsDocked)
             {
                 ctx.SetDampeners(false);
+                ctx.Gyros?.Release();  // Clear gyro overrides while docked
             }
 
             while (ctx.IsDocked)
