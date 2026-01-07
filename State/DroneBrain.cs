@@ -347,15 +347,7 @@ namespace IngameScript
                     }
                     else
                     {
-                        // Default: match leader or stay level
-                        if (HasLeaderContact)
-                        {
-                            Gyros.MatchCompassHeading(LastLeaderState.Forward, LastLeaderState.Up);
-                        }
-                        else
-                        {
-                            Gyros.OrientLevel();
-                        }
+                        Gyros.Release();
                     }
                 }
 

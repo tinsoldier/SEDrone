@@ -46,7 +46,7 @@ namespace IngameScript
 
         /// <summary>
         /// Desired orientation behavior. Ignored if Position is a coupled maneuver.
-        /// Use StayLevel or MatchLeader for default orientation.
+        /// Use StayLevel or MatchLeader for active orientation. Null releases gyro control.
         /// </summary>
         public IOrientationBehavior Orientation { get; set; }
 
