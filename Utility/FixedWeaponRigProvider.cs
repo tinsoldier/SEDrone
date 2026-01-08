@@ -100,7 +100,7 @@ namespace IngameScript
                 _hardware.RefreshWeapons(_gridTerminalSystem, _wcApi);
 
             // Log weapon discovery summary
-            _echo?.Invoke($"(WeaponRig) {_hardware.GetWeaponSummary()}");
+            //_echo?.Invoke($"(WeaponRig) {_hardware.GetWeaponSummary()}");
 
             var fixedWeapons = _hardware.FixedWeaponBlocks;
             if (fixedWeapons == null || fixedWeapons.Count == 0)
@@ -119,7 +119,7 @@ namespace IngameScript
                 }
             }
 
-            _echo?.Invoke($"(WeaponRig) Captured {_fixedWeapons.Count} weapons for targeting");
+            //_echo?.Invoke($"(WeaponRig) Captured {_fixedWeapons.Count} weapons for targeting");
         }
 
         public class CompositeFixedWeaponRig : IFixedWeaponRig

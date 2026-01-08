@@ -47,18 +47,18 @@ namespace IngameScript
             _wcApi.GetObstructions(_me, _obstructions);
 
             // Log details periodically
-            bool shouldLog = _log != null && (++_logCounter >= LOG_INTERVAL);
-            if (shouldLog)
-            {
-                _logCounter = 0;
-                _log($"WC:GetObstructions raw={_obstructions.Count}");
-                foreach (var info in _obstructions)
-                {
-                    double dist = Vector3D.Distance(position, info.Position);
-                    string isSelf = info.EntityId == _myGridId ? " [SELF]" : "";
-                    _log($"  {info.Type}: {info.Name} d={dist:F0}m{isSelf}");
-                }
-            }
+            // bool shouldLog = _log != null && (++_logCounter >= LOG_INTERVAL);
+            // if (shouldLog)
+            // {
+            //     _logCounter = 0;
+            //     _log($"WC:GetObstructions raw={_obstructions.Count}");
+            //     foreach (var info in _obstructions)
+            //     {
+            //         double dist = Vector3D.Distance(position, info.Position);
+            //         string isSelf = info.EntityId == _myGridId ? " [SELF]" : "";
+            //         _log($"  {info.Type}: {info.Name} d={dist:F0}m{isSelf}");
+            //     }
+            // }
 
             double radiusSq = radius * radius;
 

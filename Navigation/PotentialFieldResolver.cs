@@ -70,11 +70,13 @@ namespace IngameScript
         /// <param name="currentPosition">Drone's current world position.</param>
         /// <param name="currentVelocity">Drone's current velocity (for future predictive use).</param>
         /// <param name="exclusions">Entity IDs to ignore (e.g., docking target, leader).</param>
+        /// <param name="disableTerrainRepulsion">When true, skips gravity/terrain avoidance.</param>
         /// <returns>Velocity adjustment vector to add to desired velocity.</returns>
         public Vector3D ComputeRepulsion(
             Vector3D currentPosition,
             Vector3D currentVelocity,
-            HashSet<long> exclusions)
+            HashSet<long> exclusions,
+            bool disableTerrainRepulsion = false)
         {
             if (!_config.Enabled)
                 return Vector3D.Zero;
@@ -82,8 +84,11 @@ namespace IngameScript
             Vector3D totalRepulsion = Vector3D.Zero;
 
             // Terrain repulsion (handled internally, no provider needed)
-            Vector3D terrainRepulsion = ComputeTerrainRepulsion();
-            totalRepulsion += terrainRepulsion;
+            if (!disableTerrainRepulsion)
+            {
+                Vector3D terrainRepulsion = ComputeTerrainRepulsion();
+                totalRepulsion += terrainRepulsion;
+            }
 
             // Obstacle repulsion from providers
             if (_obstacleProvider != null)

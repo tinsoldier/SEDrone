@@ -32,6 +32,7 @@ namespace IngameScript
                 yield return new BehaviorIntent
                 {
                     Position = new Move(() => ctx.GetFormationPosition(), () => ctx.LastLeaderState.Velocity)
+                        .WithDisableTerrainRepulsion()
                         .WithExclusion(() => ctx.LastLeaderState.EntityId),
                     Orientation = new MatchLeader(),
                     ExitWhen = () => !padRequest.IsPending || !ctx.HasLeaderContact

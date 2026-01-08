@@ -35,6 +35,7 @@ namespace IngameScript
                 yield return new BehaviorIntent
                 {
                     Position = new Move(() => ctx.GetFormationPosition(), () => ctx.LastLeaderState.Velocity)
+                        .WithDisableTerrainRepulsion()
                         .WithExclusion(() => ctx.LastLeaderState.EntityId),
                     Orientation = new MatchLeader(),
                     ExitWhen = () => !padRequest.IsPending || !ctx.HasLeaderContact
@@ -141,6 +142,7 @@ namespace IngameScript
                             Position = new Move(
                                 new Vector3D(0, 0, -waypointDistances[currentIndex]),  // Local offset along connector -forward (approach)
                                 () => helpers.GetConnectorReference())
+                                .WithDisableTerrainRepulsion()
                                 .WithExclusion(() => ctx.LastLeaderState.EntityId),
                             Orientation = new LevelTurnToward(() => helpers.GetWaypointAtDistance(waypointDistances[currentIndex]) + helpers.GetTargetConnectorUp() * 20.0),
                             ExitWhen = () =>
@@ -184,11 +186,12 @@ namespace IngameScript
                                 new Vector3D(0, 0, -waypointDistances[currentIndex]),  // Local offset along connector -forward (approach)
                                 () => helpers.GetConnectorReference(),
                                 closingSpeed: ctx.Config.DockingApproachSpeed, maxSpeed: ctx.Config.DockingApproachSpeed)
+                                .WithDisableTerrainRepulsion()
                                 .WithExclusion(() => ctx.LastLeaderState.EntityId),
                             Orientation = dockingOrientation,
                             ExitWhen = () =>
                             {
-                                ctx.Debug?.Log($"Dock: Approach speed: {ctx.Velocity.Length():F2} m/s ({ctx.Config.DockingApproachSpeed} m/s max)");
+                                //ctx.Debug?.Log($"Dock: Approach speed: {ctx.Velocity.Length():F2} m/s ({ctx.Config.DockingApproachSpeed} m/s max)");
 
                                 var dist = ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex]));
                                 //ctx.Debug?.Log($"Dock: Waypoint {currentIndex} dist:{dist:F2}m");
@@ -209,6 +212,7 @@ namespace IngameScript
                         () => helpers.GetDockingApproachOffset(droneConnectorSize, targetConnectorSize),
                         () => helpers.GetConnectorReference(),
                         closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed)
+                        .WithDisableTerrainRepulsion()
                         .WithStopTuning(0.15, 0.3, 0.6)
                         .WithExclusion(() => ctx.LastLeaderState.EntityId),
                     Orientation = dockingOrientation,
@@ -228,6 +232,7 @@ namespace IngameScript
                         new Vector3D(0, 0, -finalApproachDistance),  // Local offset along connector -forward (approach)
                         () => helpers.GetConnectorReference(),
                         closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed)
+                        .WithDisableTerrainRepulsion()
                         .WithStopTuning(0.15, 0.3, 0.6)
                         .WithExclusion(() => ctx.LastLeaderState.EntityId),
                     Orientation = dockingOrientation,
@@ -273,6 +278,7 @@ namespace IngameScript
                             new Vector3D(0, 0, -finalApproachDistance),  // Local offset along connector -forward (approach)
                             () => helpers.GetConnectorReference(),
                             closingSpeed: ctx.Config.DockingLockSpeed, maxSpeed: ctx.Config.DockingLockSpeed)
+                            .WithDisableTerrainRepulsion()
                             .WithStopTuning(0.15, 0.3, 0.6)
                             .WithExclusion(() => ctx.LastLeaderState.EntityId),
                         Orientation = dockingOrientation,
@@ -389,29 +395,29 @@ namespace IngameScript
                 Vector3D referenceTargetPos = targetConnectorWorldPos - referenceToConnectorOffset;
 
                 // DEBUG: Log decoded world position (every 10th call to reduce spam)
-                _debugCounter++;
-                if (_debugCounter >= 10)
-                {
-                    _debugCounter = 0;
-                    var debugBlock = _ctx.GridTerminalSystem.GetBlockWithName("Debug") as IMyTextPanel;
-                    if (debugBlock != null)
-                    {
-                        Vector3D droneConnectorPos = _droneConnector != null ? _droneConnector.GetPosition() : _ctx.Reference.GetPosition();
-                        Vector3D offset = targetConnectorWorldPos - droneConnectorPos;
-                        double distance = offset.Length();
+                // _debugCounter++;
+                // if (_debugCounter >= 10)
+                // {
+                //     _debugCounter = 0;
+                //     var debugBlock = _ctx.GridTerminalSystem.GetBlockWithName("Debug") as IMyTextPanel;
+                //     if (debugBlock != null)
+                //     {
+                //         Vector3D droneConnectorPos = _droneConnector != null ? _droneConnector.GetPosition() : _ctx.Reference.GetPosition();
+                //         Vector3D offset = targetConnectorWorldPos - droneConnectorPos;
+                //         double distance = offset.Length();
 
-                        string debugMsg = string.Format(
-                            "[DECODE] Local: X={0:F2} Y={1:F2} Z={2:F2}\n" +
-                            "Target Connector: {3:F2},{4:F2},{5:F2}\n" +
-                            "Drone Connector: {6:F2},{7:F2},{8:F2}\n" +
-                            "Offset: {9:F2},{10:F2},{11:F2} (dist={12:F2}m)",
-                            _response.ConnectorOffset.X, _response.ConnectorOffset.Y, _response.ConnectorOffset.Z,
-                            targetConnectorWorldPos.X, targetConnectorWorldPos.Y, targetConnectorWorldPos.Z,
-                            droneConnectorPos.X, droneConnectorPos.Y, droneConnectorPos.Z,
-                            offset.X, offset.Y, offset.Z, distance);
-                        debugBlock.WriteText(debugMsg + "\n", true);
-                    }
-                }
+                //         string debugMsg = string.Format(
+                //             "[DECODE] Local: X={0:F2} Y={1:F2} Z={2:F2}\n" +
+                //             "Target Connector: {3:F2},{4:F2},{5:F2}\n" +
+                //             "Drone Connector: {6:F2},{7:F2},{8:F2}\n" +
+                //             "Offset: {9:F2},{10:F2},{11:F2} (dist={12:F2}m)",
+                //             _response.ConnectorOffset.X, _response.ConnectorOffset.Y, _response.ConnectorOffset.Z,
+                //             targetConnectorWorldPos.X, targetConnectorWorldPos.Y, targetConnectorWorldPos.Z,
+                //             droneConnectorPos.X, droneConnectorPos.Y, droneConnectorPos.Z,
+                //             offset.X, offset.Y, offset.Z, distance);
+                //         debugBlock.WriteText(debugMsg + "\n", true);
+                //     }
+                // }
 
                 return referenceTargetPos;
             }

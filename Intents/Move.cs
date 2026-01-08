@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
 namespace IngameScript
@@ -58,6 +59,7 @@ namespace IngameScript
         // === Potential Field Exclusions ===
         private readonly HashSet<long> _exclusions = new HashSet<long>();
         private readonly List<Func<long>> _deferredExclusions = new List<Func<long>>();
+        private bool _disableTerrainRepulsion;
 
         /// <summary>
         /// Adds a static entity ID to the exclusion list.
@@ -78,6 +80,15 @@ namespace IngameScript
         {
             if (entityIdProvider != null)
                 _deferredExclusions.Add(entityIdProvider);
+            return this;
+        }
+
+        /// <summary>
+        /// Disables terrain/gravity repulsion for this move.
+        /// </summary>
+        public Move WithDisableTerrainRepulsion(bool disable = true)
+        {
+            _disableTerrainRepulsion = disable;
             return this;
         }
 
@@ -429,10 +440,10 @@ namespace IngameScript
 
 
                     // Debug logging
-                    if (distance > 10.0)
-                    {
-                        ctx.Debug?.Log($"Move: close={closingCmd:F1}m/s");
-                    }
+                    // if (distance > 10.0)
+                    // {
+                    //     ctx.Debug?.Log($"Move: close={closingCmd:F1}m/s");
+                    // }
                 }
                 else
                 {
@@ -477,12 +488,48 @@ namespace IngameScript
                 Vector3D repulsion = ctx.FieldResolver.ComputeRepulsion(
                     ctx.Position,
                     currentVelocity,
-                    effectiveExclusions
+                    effectiveExclusions,
+                    _disableTerrainRepulsion
                 );
 
                 if (IsValid(repulsion))
                 {
                     desiredVelocity += repulsion;
+                }
+            }
+
+            // Hard ground-avoidance guard (skip when terrain avoidance is disabled)
+            if (!_disableTerrainRepulsion && ctx.Reference != null && ctx.Config.MinTerrainClearance > 0)
+            {
+                Vector3D gravity = ctx.Reference.GetNaturalGravity();
+                if (gravity.LengthSquared() > 0.01)
+                {
+                    double altitude;
+                    if (ctx.Reference.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude))
+                    {
+                        Vector3D down = Vector3D.Normalize(gravity);
+                        double remaining = altitude - ctx.Config.MinTerrainClearance;
+                        if (remaining <= 0.5)
+                        {
+                            double desiredDown = Vector3D.Dot(desiredVelocity, down);
+                            if (desiredDown > 0)
+                                desiredVelocity -= down * desiredDown;
+                        }
+                        else
+                        {
+                            double downSpeed = Vector3D.Dot(currentVelocity, down);
+                            if (downSpeed > 0.1)
+                            {
+                                double brakingDist = ctx.Thrusters.GetBrakingDistance(downSpeed, down);
+                                if (brakingDist >= remaining)
+                                {
+                                    double desiredDown = Vector3D.Dot(desiredVelocity, down);
+                                    if (desiredDown > 0)
+                                        desiredVelocity -= down * desiredDown;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
