@@ -207,11 +207,14 @@ namespace IngameScript
 
             Action<string> log = debugLogger != null ? (Action<string>)debugLogger.Log : null;
 
-            // Build obstacle provider (WcApi if available)
-            IObstacleProvider provider = null;
+            // Build obstacle provider (refhack shared + WC obstructions if available)
+            IObstacleProvider provider = context.ObstacleProvider;
             if (_wcApi != null)
             {
-                provider = new WcApiObstacleProvider(_wcApi, context.Me, context.GridId, log);
+                var wcProvider = new WcApiObstacleProvider(_wcApi, context.Me, context.GridId, log);
+                provider = provider != null
+                    ? new CompositeObstacleProvider(provider, wcProvider)
+                    : (IObstacleProvider)wcProvider;
             }
 
             // Create resolver (terrain avoidance works even without providers)

@@ -229,12 +229,12 @@ namespace IngameScript
                 _cachedObstacles.Add(_tempObstacleList[i].Value);
             }
 
-            // Log obstacle counts
-            if (_log != null && _lastRawObstacleCount > 0)
-            {
-                double nearestDist = count > 0 ? Math.Sqrt(_tempObstacleList[0].Key) : 0;
-                _log($"PF: {_lastRawObstacleCount} raw, {count} used, nearest={nearestDist:F1}m");
-            }
+            // // Log obstacle counts
+            // if (_log != null && _lastRawObstacleCount > 0)
+            // {
+            //     double nearestDist = count > 0 ? Math.Sqrt(_tempObstacleList[0].Key) : 0;
+            //     _log($"PF: {_lastRawObstacleCount} raw, {count} used, nearest={nearestDist:F1}m");
+            // }
         }
 
         /// <summary>

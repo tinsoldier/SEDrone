@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using System.Linq;
 using Sandbox.ModAPI.Ingame;
 
@@ -32,6 +33,7 @@ namespace IngameScript
         private Program.WcPbApi _wcApi;
         private bool _hasWeaponCore;
         public DockingPadManager DockingPads { get { return _dockingPadManager; } }
+        private readonly List<MyDetectedEntityInfo> _obstructionCache = new List<MyDetectedEntityInfo>();
 
         public void Initialize(BrainContext context)
         {
@@ -105,6 +107,9 @@ namespace IngameScript
 
                 // Process docking requests
                 ProcessDockingRequests();
+
+                // TEMP: Debug LCD obstructions list from WC API
+                UpdateObstructionDebug();
 
                 // Cleanup stale assignments periodically
                 if (_context.GameTime - _lastCleanupTime >= CLEANUP_INTERVAL)
@@ -205,6 +210,33 @@ namespace IngameScript
                     }
                 }
             }
+        }
+
+        private void UpdateObstructionDebug()
+        {
+            if (_wcApi == null || _context == null || _context.GridTerminalSystem == null)
+                return;
+
+            var debugBlock = _context.GridTerminalSystem.GetBlockWithName("Debug") as IMyTextPanel;
+            if (debugBlock == null)
+                return;
+
+            _obstructionCache.Clear();
+            _wcApi.GetObstructions(_context.Me, _obstructionCache);
+
+            var output = new StringBuilder();
+            output.Append("Obstructions: ");
+            output.Append(_obstructionCache.Count);
+
+            for (int i = 0; i < _obstructionCache.Count; i++)
+            {
+                output.Append("\n- ");
+                output.Append(_obstructionCache[i].Name);
+                output.Append(" - ");
+                output.Append(_obstructionCache[i].EntityId);
+            }
+
+            debugBlock.WriteText(output.ToString(), false);
         }
 
         public void Shutdown()

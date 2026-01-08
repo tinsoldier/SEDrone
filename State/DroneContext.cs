@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRageMath;
 
@@ -162,6 +163,11 @@ namespace IngameScript
         /// Fixed weapon rig provider.
         /// </summary>
         public FixedWeaponRigProvider WeaponRigs => _brain.WeaponRigs;
+
+        /// <summary>
+        /// Peer drone IDs for obstacle exclusions.
+        /// </summary>
+        public IReadOnlyList<long> DroneIds => _brain.Context.DroneIds;
 
         /// <summary>
         /// WeaponCore PB API (may be null if unavailable).

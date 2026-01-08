@@ -143,7 +143,15 @@ namespace IngameScript
                                 new Vector3D(0, 0, -waypointDistances[currentIndex]),  // Local offset along connector -forward (approach)
                                 () => helpers.GetConnectorReference())
                                 .WithDisableTerrainRepulsion()
-                                .WithExclusion(() => ctx.LastLeaderState.EntityId),
+                                .WithExclusion(() => ctx.LastLeaderState.EntityId)
+                                .WithExclusions(() => {
+                                    var dist = ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex]));
+                                    if (dist >= 7.5)
+                                    {
+                                        return ctx.DroneIds;
+                                    }
+                                    return new List<long>();
+                                }),
                             Orientation = new LevelTurnToward(() => helpers.GetWaypointAtDistance(waypointDistances[currentIndex]) + helpers.GetTargetConnectorUp() * 20.0),
                             ExitWhen = () =>
                             {
@@ -180,14 +188,17 @@ namespace IngameScript
                     }
                     else
                     {
+                        var move = new Move(
+                            new Vector3D(0, 0, -waypointDistances[currentIndex]),  // Local offset along connector -forward (approach)
+                            () => helpers.GetConnectorReference(),
+                            closingSpeed: ctx.Config.DockingApproachSpeed, maxSpeed: ctx.Config.DockingApproachSpeed)
+                            .WithDisableTerrainRepulsion()
+                            .WithExclusion(() => ctx.LastLeaderState.EntityId)
+                            .WithExclusions(() => ctx.DroneIds);
+
                         yield return new BehaviorIntent
                         {
-                            Position = new Move(
-                                new Vector3D(0, 0, -waypointDistances[currentIndex]),  // Local offset along connector -forward (approach)
-                                () => helpers.GetConnectorReference(),
-                                closingSpeed: ctx.Config.DockingApproachSpeed, maxSpeed: ctx.Config.DockingApproachSpeed)
-                                .WithDisableTerrainRepulsion()
-                                .WithExclusion(() => ctx.LastLeaderState.EntityId),
+                            Position = move,
                             Orientation = dockingOrientation,
                             ExitWhen = () =>
                             {
@@ -214,7 +225,8 @@ namespace IngameScript
                         closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed)
                         .WithDisableTerrainRepulsion()
                         .WithStopTuning(0.15, 0.3, 0.6)
-                        .WithExclusion(() => ctx.LastLeaderState.EntityId),
+                        .WithExclusion(() => ctx.LastLeaderState.EntityId)
+                        .WithExclusions(() => ctx.DroneIds),
                     Orientation = dockingOrientation,
                     // Measure from drone connector to target - not from ship controller
                     ExitWhen = () => Vector3D.Distance(droneConnector.GetPosition(), helpers.GetConnectorPosition()) < (droneConnectorSize + targetConnectorSize + 1.0)
@@ -234,7 +246,8 @@ namespace IngameScript
                         closingSpeed: ctx.Config.DockingFinalSpeed, maxSpeed: ctx.Config.DockingFinalSpeed)
                         .WithDisableTerrainRepulsion()
                         .WithStopTuning(0.15, 0.3, 0.6)
-                        .WithExclusion(() => ctx.LastLeaderState.EntityId),
+                        .WithExclusion(() => ctx.LastLeaderState.EntityId)
+                        .WithExclusions(() => ctx.DroneIds),
                     Orientation = dockingOrientation,
                     ExitWhen = () =>
                     {
@@ -280,7 +293,8 @@ namespace IngameScript
                             closingSpeed: ctx.Config.DockingLockSpeed, maxSpeed: ctx.Config.DockingLockSpeed)
                             .WithDisableTerrainRepulsion()
                             .WithStopTuning(0.15, 0.3, 0.6)
-                            .WithExclusion(() => ctx.LastLeaderState.EntityId),
+                            .WithExclusion(() => ctx.LastLeaderState.EntityId)
+                            .WithExclusions(() => ctx.DroneIds),
                         Orientation = dockingOrientation,
                         ExitWhen = () => {
                             droneConnector.Connect();

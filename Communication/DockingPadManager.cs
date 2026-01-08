@@ -146,11 +146,11 @@ namespace IngameScript
             _echo?.Invoke(debugMsg);
 
             // Also log to a text panel or LCD named "Debug" if available
-            var debugBlock = _gts.GetBlockWithName("Debug") as IMyTextPanel;
-            if (debugBlock != null)
-            {
-                debugBlock.WriteText(debugMsg + "\n", true);
-            }
+            // var debugBlock = _gts.GetBlockWithName("Debug") as IMyTextPanel;
+            // if (debugBlock != null)
+            // {
+            //     debugBlock.WriteText(debugMsg + "\n", true);
+            // }
 
             // Transform connector directions to leader-local
             Vector3D connectorForwardWorld = connector.WorldMatrix.Forward;

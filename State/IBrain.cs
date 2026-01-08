@@ -83,6 +83,10 @@ namespace IngameScript
         public TacticalCoordinator TacticalCoordinator { get; set; }
         public TacticalSnapshot SharedTacticalSnapshot { get; set; }
 
+        // === Shared Obstacle Providers ===
+        public IObstacleProvider ObstacleProvider { get; set; }
+        public IReadOnlyList<long> DroneIds { get; set; }
+
         // === Docking (refhack/local) ===
         public DockingPadManager LocalDockingManager { get; set; }
 

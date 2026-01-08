@@ -219,12 +219,32 @@ namespace IngameScript
                 Echo("[RefHack] No docked drones detected on DronePad connectors.");
             }
 
+            var droneIds = new List<long>(droneContexts.Count);
+            for (int i = 0; i < droneContexts.Count; i++)
+            {
+                if (droneContexts[i] != null && droneContexts[i].GridId != 0)
+                {
+                    droneIds.Add(droneContexts[i].GridId);
+                }
+            }
+
             // Assign formation indices to all drones
             int droneCount = droneContexts.Count;
             for (int i = 0; i < droneCount; i++)
             {
                 droneContexts[i].FormationIndex = i;
                 droneContexts[i].FormationCount = droneCount;
+                droneContexts[i].DroneIds = droneIds;
+            }
+
+            // Share refhack drone positions for obstacle avoidance
+            for (int i = 0; i < droneContexts.Count; i++)
+            {
+                var ctx = droneContexts[i];
+                if (ctx != null)
+                {
+                    ctx.ObstacleProvider = new RefHackDroneObstacleProvider(() => droneContexts, ctx.GridId);
+                }
             }
 
             for (int i = 0; i < droneContexts.Count; i++)
@@ -237,6 +257,7 @@ namespace IngameScript
             {
                 Echo($"[RefHack] Dynamic formation: {droneCount} drones in half-circle");
             }
+
         }
 
         private void AddRefHackBrain(IBrain brain, BrainContext context)

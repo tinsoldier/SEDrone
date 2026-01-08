@@ -59,6 +59,7 @@ namespace IngameScript
         // === Potential Field Exclusions ===
         private readonly HashSet<long> _exclusions = new HashSet<long>();
         private readonly List<Func<long>> _deferredExclusions = new List<Func<long>>();
+        private readonly List<Func<IReadOnlyList<long>>> _deferredExclusionLists = new List<Func<IReadOnlyList<long>>>();
         private bool _disableTerrainRepulsion;
 
         /// <summary>
@@ -80,6 +81,16 @@ namespace IngameScript
         {
             if (entityIdProvider != null)
                 _deferredExclusions.Add(entityIdProvider);
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a dynamic list of entity IDs to the exclusion set.
+        /// </summary>
+        public Move WithExclusions(Func<IReadOnlyList<long>> entityIdsProvider)
+        {
+            if (entityIdsProvider != null)
+                _deferredExclusionLists.Add(entityIdsProvider);
             return this;
         }
 
@@ -474,7 +485,7 @@ namespace IngameScript
             {
                 // Build effective exclusion set (static + deferred)
                 HashSet<long> effectiveExclusions = _exclusions;
-                if (_deferredExclusions.Count > 0)
+                if (_deferredExclusions.Count > 0 || _deferredExclusionLists.Count > 0)
                 {
                     effectiveExclusions = new HashSet<long>(_exclusions);
                     foreach (var provider in _deferredExclusions)
@@ -482,6 +493,18 @@ namespace IngameScript
                         long id = provider();
                         if (id != 0)
                             effectiveExclusions.Add(id);
+                    }
+                    for (int i = 0; i < _deferredExclusionLists.Count; i++)
+                    {
+                        var ids = _deferredExclusionLists[i]();
+                        if (ids == null)
+                            continue;
+                        for (int j = 0; j < ids.Count; j++)
+                        {
+                            long id = ids[j];
+                            if (id != 0)
+                                effectiveExclusions.Add(id);
+                        }
                     }
                 }
 
