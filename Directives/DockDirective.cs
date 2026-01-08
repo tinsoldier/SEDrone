@@ -69,6 +69,29 @@ namespace IngameScript
                 yield break;
             }
 
+            if (padResponse.DelaySeconds > 0)
+            {
+                double delayStart = ctx.GameTime;
+                while (ctx.HasLeaderContact && (ctx.GameTime - delayStart) < padResponse.DelaySeconds)
+                {
+                    yield return new BehaviorIntent
+                    {
+                        Position = new Move(() => ctx.GetFormationPosition(), () => ctx.LastLeaderState.Velocity)
+                            .WithDisableTerrainRepulsion()
+                            .WithExclusion(() => ctx.LastLeaderState.EntityId),
+                        Orientation = new MatchLeader(),
+                        ExitWhen = () => !ctx.HasLeaderContact || (ctx.GameTime - delayStart) >= padResponse.DelaySeconds
+                    };
+                }
+
+                if (!ctx.HasLeaderContact)
+                {
+                    yield return BehaviorIntent.Aborted(AbortReason.LostLeader,
+                        "Lost leader contact while waiting to dock");
+                    yield break;
+                }
+            }
+
             // === PHASE 2: Connector Selection ===
 
             // Temporary helper to get target connector forward (before we have drone connector)
@@ -144,14 +167,7 @@ namespace IngameScript
                                 () => helpers.GetConnectorReference())
                                 .WithDisableTerrainRepulsion()
                                 .WithExclusion(() => ctx.LastLeaderState.EntityId)
-                                .WithExclusions(() => {
-                                    var dist = ctx.DistanceTo(helpers.GetWaypointAtDistance(waypointDistances[currentIndex]));
-                                    if (dist >= 7.5)
-                                    {
-                                        return ctx.DroneIds;
-                                    }
-                                    return new List<long>();
-                                }),
+                                .WithExclusions(() => ctx.DroneIds),
                             Orientation = new LevelTurnToward(() => helpers.GetWaypointAtDistance(waypointDistances[currentIndex]) + helpers.GetTargetConnectorUp() * 20.0),
                             ExitWhen = () =>
                             {
@@ -175,7 +191,7 @@ namespace IngameScript
                                 // if(!ctx.Gyros.IsLevel(5.0))
                                 //     return false;
 
-                                if(!ctx.Gyros.IsAligned)
+                                if(!(ctx.Gyros.TotalError < 0.035)) // ~2 degrees
                                 {   
                                     //ctx.Debug?.Log("Dock: Orientation not yet aligned");
                                     return false;

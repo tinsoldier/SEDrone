@@ -62,6 +62,29 @@ namespace IngameScript
                 yield break;
             }
 
+            if (padResponse.DelaySeconds > 0)
+            {
+                double delayStart = ctx.GameTime;
+                while (ctx.HasLeaderContact && (ctx.GameTime - delayStart) < padResponse.DelaySeconds)
+                {
+                    yield return new BehaviorIntent
+                    {
+                        Position = new Move(() => ctx.GetFormationPosition(), () => ctx.LastLeaderState.Velocity)
+                            .WithDisableTerrainRepulsion()
+                            .WithExclusion(() => ctx.LastLeaderState.EntityId),
+                        Orientation = new MatchLeader(),
+                        ExitWhen = () => !ctx.HasLeaderContact || (ctx.GameTime - delayStart) >= padResponse.DelaySeconds
+                    };
+                }
+
+                if (!ctx.HasLeaderContact)
+                {
+                    yield return BehaviorIntent.Aborted(AbortReason.LostLeader,
+                        "Lost leader contact while waiting to dock");
+                    yield break;
+                }
+            }
+
             ctx.Debug?.Log("FastDock: Got docking pad response");
 
             // === PHASE 2: Connector Selection ===

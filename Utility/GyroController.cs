@@ -31,7 +31,7 @@ namespace IngameScript
 
         // === Control tuning ===
         private const double MAX_ANGULAR_VELOCITY = 4.0;  // rad/s - max rotation speed for dampened control
-        private const double ALIGNMENT_DEADBAND = 0.001;  // ~0.3 degrees - very tight deadband
+        private const double ALIGNMENT_DEADBAND = 0.003;  // ~0.3 degrees - very tight deadband
         private const double DAMPEN_THRESHOLD = 0.1;      // ~6 degrees - switch to fine control below this
         private const double PID_ANGLE_THRESHOLD = 0.05;  // ~3 degrees - angle threshold for PID
         private const double PID_VELOCITY_THRESHOLD = 0.25; // rad/s - velocity threshold for PID

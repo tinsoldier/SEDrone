@@ -23,6 +23,7 @@ namespace IngameScript
         private List<IMyShipConnector> _availableConnectors = new List<IMyShipConnector>();
         private double _lastConnectorRefresh = 0;
         private const double CONNECTOR_REFRESH_INTERVAL = 5.0; // Refresh every 5 seconds
+        private const double DOCK_QUEUE_SPACING = 3.0; // Seconds between dock starts
 
         private class DockingPadAssignment
         {
@@ -30,6 +31,7 @@ namespace IngameScript
             public IMyShipConnector Connector;
             public double AssignedTime;
             public double LastHeartbeat;
+            public double DelaySeconds;
         }
 
         public DockingPadManager(
@@ -67,7 +69,7 @@ namespace IngameScript
                 existingAssignment.LastHeartbeat = currentTime;
 
                 // Return existing assignment
-                return CreateResponse(request, existingAssignment.Connector, currentTime);
+                return CreateResponse(request, existingAssignment.Connector, existingAssignment.DelaySeconds, currentTime);
             }
 
             // Find the closest available connector to the drone
@@ -81,6 +83,7 @@ namespace IngameScript
                     DroneEntityId = request.DroneEntityId,
                     RequestId = request.RequestId,
                     Available = false,
+                    DelaySeconds = 0,
                     Timestamp = currentTime
                 };
             }
@@ -91,12 +94,13 @@ namespace IngameScript
                 DroneEntityId = request.DroneEntityId,
                 Connector = selectedConnector,
                 AssignedTime = currentTime,
-                LastHeartbeat = currentTime
+                LastHeartbeat = currentTime,
+                DelaySeconds = _assignments.Count * DOCK_QUEUE_SPACING
             };
 
             _echo?.Invoke($"[DOCKING] Assigned pad {selectedConnector.CustomName} to {request.DroneGridName}");
 
-            return CreateResponse(request, selectedConnector, currentTime);
+            return CreateResponse(request, selectedConnector, _assignments[request.DroneEntityId].DelaySeconds, currentTime);
         }
 
         /// <summary>
@@ -105,6 +109,7 @@ namespace IngameScript
         private DockingPadResponse CreateResponse(
             DockingPadRequest request,
             IMyShipConnector connector,
+            double delaySeconds,
             double currentTime)
         {
             if (_reference == null)
@@ -114,6 +119,7 @@ namespace IngameScript
                     DroneEntityId = request.DroneEntityId,
                     RequestId = request.RequestId,
                     Available = false,
+                    DelaySeconds = delaySeconds,
                     Timestamp = currentTime
                 };
             }
@@ -169,6 +175,7 @@ namespace IngameScript
                 ConnectorUp = connectorUpLocal,
                 ConnectorSize = GetConnectorRadius(connector),
                 WaypointsData = "", // Optional: could generate waypoints here
+                DelaySeconds = delaySeconds,
                 Timestamp = currentTime
             };
         }

@@ -74,6 +74,7 @@ namespace IngameScript
 
         // Optional waypoint sequence (offsets relative to connector in connector-local space)
         public string WaypointsData;            // Serialized waypoints (if any)
+        public double DelaySeconds;             // Optional delay before docking sequence
 
         public double Timestamp;
 
@@ -89,6 +90,7 @@ namespace IngameScript
                 ConnectorUp.X, ConnectorUp.Y, ConnectorUp.Z,
                 ConnectorSize,
                 WaypointsData ?? "",
+                DelaySeconds,
                 Timestamp
             );
         }
@@ -126,7 +128,16 @@ namespace IngameScript
                 );
                 response.ConnectorSize = double.Parse(parts[13]);
                 response.WaypointsData = parts[14];
-                response.Timestamp = double.Parse(parts[15]);
+                if (parts.Length >= 17)
+                {
+                    response.DelaySeconds = double.Parse(parts[15]);
+                    response.Timestamp = double.Parse(parts[16]);
+                }
+                else
+                {
+                    response.DelaySeconds = 0;
+                    response.Timestamp = double.Parse(parts[15]);
+                }
                 return true;
             }
             catch
