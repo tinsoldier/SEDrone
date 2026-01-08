@@ -10,7 +10,6 @@ namespace IngameScript
         double ProjectileSpeed { get; } // 0 = hitscan
         double MaxRange { get; } // 0 = unknown/unlimited
         bool IsWeaponReady { get; }
-        bool CanFire { get; }
         void Fire(bool enable);
     }
 
@@ -135,7 +134,7 @@ namespace IngameScript
             bool inRange = weapon.MaxRange <= 0 || range <= weapon.MaxRange;
             bool stable = _alignedTicks >= _stableTicksRequired;
             bool slowEnough = ctx.Gyros.AngularVelocity <= _maxAngularRateRad;
-            FireReady = IsAligned && stable && slowEnough && weapon.IsWeaponReady && weapon.CanFire && inRange ;
+            FireReady = IsAligned && stable && slowEnough && weapon.IsWeaponReady && inRange ;
             
             if (_autoFire)
             {

@@ -56,6 +56,9 @@ namespace IngameScript
                     //bool needsApproach = ctx.HasExitedFormation() || !ctx.IsInFormation();
                     bool hadThreats = ctx.Tactical.HasThreats;
                     bool leaderHasTargets = ctx.LastLeaderState.TargetEntityId != 0;
+                    var rigProvider = ctx.WeaponRigs;
+                    var rig = rigProvider != null ? rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime) : null;
+                    bool weaponsReady = rig != null && rig.IsWeaponReady;
 
                     // Debug: log leader target state
                     if (leaderHasTargets)
@@ -71,11 +74,12 @@ namespace IngameScript
                     {
                         Position = new Move(ctx.StationOffset, () => ctx.LastLeaderState)
                             .WithExclusion(() => ctx.LastLeaderState.EntityId),
-                        Orientation = GetFormationOrientation(ctx),
+                        Orientation = GetFormationOrientation(ctx, rigProvider, rig, leaderHasTargets, weaponsReady),
                         ExitWhen = () => ctx.HasExitedFormation() ||
                             !ctx.HasLeaderContact ||
                             ctx.Tactical.HasThreats != hadThreats ||
-                            (ctx.LastLeaderState.TargetEntityId != 0) != leaderHasTargets
+                            (ctx.LastLeaderState.TargetEntityId != 0) != leaderHasTargets ||
+                            ((ctx.LastLeaderState.TargetEntityId != 0) && rig != null && rig.IsWeaponReady) != weaponsReady
                     };
                 }
             }
@@ -85,10 +89,9 @@ namespace IngameScript
         /// Determines orientation behavior while in formation.
         /// If threats exist, face them. Otherwise, match leader heading.
         /// </summary>
-        private IOrientationBehavior GetFormationOrientation(DroneContext ctx)
+        private IOrientationBehavior GetFormationOrientation(DroneContext ctx, FixedWeaponRigProvider rigProvider, IFixedWeaponRig rig, bool leaderHasTarget, bool weaponsReady)
         {
-            var rigProvider = ctx.WeaponRigs;
-            if (rigProvider != null && ctx.LastLeaderState.TargetEntityId > 0)
+            if (leaderHasTarget && weaponsReady)
             {
                 return new AimFixedWeapons(
                     () =>
@@ -100,9 +103,10 @@ namespace IngameScript
                         //     ?? ctx.Tactical.GetTargetTelemetry(ctx.LastLeaderState.TargetEntityId, weaponBlock)
                         //     ?? ctx.Tactical.GetClosestEnemyTelemetry(ctx.Position);
                     },
-                    () => rigProvider.GetPrimaryFixedWeaponRig(ctx.GameTime));
+                    () => rig);
             }
-            else if (rigProvider != null)
+
+            if (rigProvider != null)
             {
                 rigProvider.StopAllWeapons();
             }

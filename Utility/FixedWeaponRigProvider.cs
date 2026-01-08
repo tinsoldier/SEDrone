@@ -128,7 +128,6 @@ namespace IngameScript
             public readonly List<IMyTerminalBlock> _weaponBlocks;
             private readonly Program.WcPbApi _wcApi;
             private readonly System.Action<string> _echo;
-            private readonly HashSet<ulong> _seenProjectiles = new HashSet<ulong>();
             //private bool _monitorRegistered;
             private bool? _lastFireState;
             private double? _cachedMaxRange;
@@ -145,7 +144,6 @@ namespace IngameScript
             public double ProjectileSpeed => 1700; // TODO: wire actual projectile speed
             public double MaxRange => GetCachedMaxRange();
             public bool IsWeaponReady => AnyWeaponReady();
-            public bool CanFire => AnyWeaponCanFire();
 
             public void Fire(bool enable)
             {
@@ -223,21 +221,7 @@ namespace IngameScript
                     var block = _weaponBlocks[i];
                     if (block == null || !block.IsFunctional)
                         continue;
-                    if (_wcApi.IsWeaponReadyToFire(block, 0, true, false))
-                        return true;
-                }
-                return false;
-            }
-
-            private bool AnyWeaponCanFire()
-            {
-                if (_weaponBlocks == null || _weaponBlocks.Count == 0)
-                    return false;
-
-                for (int i = 0; i < _weaponBlocks.Count; i++)
-                {
-                    var block = _weaponBlocks[i];
-                    if (block != null && block.IsFunctional && block.IsWorking)
+                    if (_wcApi.IsWeaponReadyToFire(block))
                         return true;
                 }
                 return false;
