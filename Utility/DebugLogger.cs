@@ -27,6 +27,7 @@ namespace IngameScript
         private double _perfMinMs = double.MaxValue;
         private double _perfMaxMs;
         private string _perfLine;
+        private string _perfStatus;
 
         /// <summary>
         /// Creates a debug logger that writes to the PB's Echo output.
@@ -96,7 +97,10 @@ namespace IngameScript
                 output.AppendLine("=== Debug Log (newest first) ===");
                 if (!string.IsNullOrEmpty(_perfLine))
                 {
-                    output.AppendLine(_perfLine);
+                    if (!string.IsNullOrEmpty(_perfStatus))
+                        output.AppendLine($"{_perfLine} [{_perfStatus}]");
+                    else
+                        output.AppendLine(_perfLine);
                 }
 
                 // Print in reverse order (newest first)
@@ -119,6 +123,7 @@ namespace IngameScript
             _lastMessage = null;
             _lastMessageStartTime = 0;
             _perfLine = null;
+            _perfStatus = null;
         }
 
         /// <summary>
@@ -142,6 +147,14 @@ namespace IngameScript
             _perfSumMs = 0;
             _perfMinMs = double.MaxValue;
             _perfMaxMs = 0;
+        }
+
+        /// <summary>
+        /// Sets a short status tag appended to the perf stats line.
+        /// </summary>
+        public void SetPerfStatus(string status)
+        {
+            _perfStatus = status;
         }
 
         /// <summary>

@@ -376,11 +376,13 @@ namespace IngameScript
                 long leaderEntityId = HasLeaderContact ? LastLeaderState.EntityId : 0;
                 Context.TacticalCoordinator.UpdateSnapshot(Context.SharedTacticalSnapshot, droneEntityId, leaderEntityId, Context.GameTime);
                 _tacticalContext.ApplySnapshot(Context.SharedTacticalSnapshot);
+                _droneContext.Debug?.SetPerfStatus(_tacticalContext.HasPositionData ? "WCBridge" : null);
                 ProjectileCount = _tacticalContext.ProjectileCount;
                 return;
             }
 
             _tacticalContext.ClearProjectileThreats();
+            _droneContext.Debug?.SetPerfStatus(null);
             if (_wcApi != null)
             {
                 CheckEnemyTargets();
