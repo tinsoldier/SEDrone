@@ -60,6 +60,7 @@ namespace IngameScript
         private readonly HashSet<long> _exclusions = new HashSet<long>();
         private readonly List<Func<long>> _deferredExclusions = new List<Func<long>>();
         private readonly List<Func<IReadOnlyList<long>>> _deferredExclusionLists = new List<Func<IReadOnlyList<long>>>();
+        private HashSet<long> _effectiveExclusions;
         private bool _disableTerrainRepulsion;
 
         /// <summary>
@@ -487,7 +488,18 @@ namespace IngameScript
                 HashSet<long> effectiveExclusions = _exclusions;
                 if (_deferredExclusions.Count > 0 || _deferredExclusionLists.Count > 0)
                 {
-                    effectiveExclusions = new HashSet<long>(_exclusions);
+                    if (_effectiveExclusions == null)
+                    {
+                        _effectiveExclusions = new HashSet<long>(_exclusions);
+                    }
+                    else
+                    {
+                        _effectiveExclusions.Clear();
+                        foreach (var id in _exclusions)
+                            _effectiveExclusions.Add(id);
+                    }
+
+                    effectiveExclusions = _effectiveExclusions;
                     foreach (var provider in _deferredExclusions)
                     {
                         long id = provider();

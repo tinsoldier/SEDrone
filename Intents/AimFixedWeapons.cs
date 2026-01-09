@@ -138,7 +138,7 @@ namespace IngameScript
             
             if (_autoFire)
             {
-                ctx.Debug.Log($"(Aim) aligned={IsAligned}, stable={stable}, slowEnough={slowEnough}, inRange={inRange}, => FireReady={FireReady}");
+                //ctx.Debug.Log($"(Aim) aligned={IsAligned}, stable={stable}, slowEnough={slowEnough}, inRange={inRange}, => FireReady={FireReady}");
                 weapon.Fire(FireReady);
             }
         }

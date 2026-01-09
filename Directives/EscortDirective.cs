@@ -53,7 +53,6 @@ namespace IngameScript
                 while (ctx.HasLeaderContact)
                 {
                     // Check if we need to approach or can hold formation
-                    //bool needsApproach = ctx.HasExitedFormation() || !ctx.IsInFormation();
                     bool hadThreats = ctx.Tactical.HasThreats;
                     bool leaderHasTargets = ctx.LastLeaderState.TargetEntityId != 0;
                     var rigProvider = ctx.WeaponRigs;
