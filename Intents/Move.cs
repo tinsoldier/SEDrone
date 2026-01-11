@@ -381,7 +381,7 @@ namespace IngameScript
                     // If we're far away, go fast. If we're close, slow down based on braking distance.
                     double targetApproachSpeed;
 
-                    if (distance > currentBrakingDist * 3.0)
+                    if (distance > currentBrakingDist * 1.2) // why hardcoded? ctx.Config.BrakingSafetyMargin sounds right but is used for formation spacing :smh:
                     {
                         // Far away - use max speed or 100 m/s
                         targetApproachSpeed = _maxSpeed > 0 ? _maxSpeed : 100.0;
@@ -390,7 +390,8 @@ namespace IngameScript
                     {
                         // Close - reduce speed proportional to remaining distance
                         // Speed where we can brake to stop within remaining distance
-                        targetApproachSpeed = Math.Sqrt(2.0 * distance * 10.0); // Assume ~10 m/s² decel
+                        var brakingAcceleration = ctx.Thrusters.GetBrakingAcceleration(direction);
+                        targetApproachSpeed = Math.Sqrt(2.0 * distance * brakingAcceleration); // Assume ~10 m/s² decel
                         targetApproachSpeed = Math.Min(targetApproachSpeed, _maxSpeed > 0 ? _maxSpeed : 100.0);
                         targetApproachSpeed = Math.Max(targetApproachSpeed, 1.0); // Minimum 1 m/s
                     }
@@ -447,10 +448,8 @@ namespace IngameScript
 
                     desiredVelocity = targetVelocity + direction * closingSpeed + damping;
 
-                    var dir = positionError / positionError.Length();
-                    var closingCmd = Vector3D.Dot(desiredVelocity - targetVelocity, dir);
-
-
+                    //var dir = positionError / positionError.Length();
+                    //var closingCmd = Vector3D.Dot(desiredVelocity - targetVelocity, dir);
                     // Debug logging
                     // if (distance > 10.0)
                     // {
