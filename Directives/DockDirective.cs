@@ -191,7 +191,7 @@ namespace IngameScript
                                 // if(!ctx.Gyros.IsLevel(5.0))
                                 //     return false;
 
-                                if(!(ctx.Gyros.TotalError < 0.035)) // ~2 degrees
+                                if(!(ctx.Gyros.TotalError < 0.07)) // ~4 degrees
                                 {   
                                     //ctx.Debug?.Log("Dock: Orientation not yet aligned");
                                     return false;
