@@ -420,7 +420,7 @@ namespace IngameScript
                 double timeToIntercept = Math.Min(distance / _maxClosingSpeed, 1);
 
                 // Lead the target: predict where it will be when we arrive
-                Vector3D leadOffset = targetVelocity * ctx.DeltaTime*4;
+                Vector3D leadOffset = targetVelocity * ctx.DeltaTime;
                 Vector3D predictedError = positionError + leadOffset;
                 double predictedDistance = predictedError.Length();
 
@@ -439,7 +439,7 @@ namespace IngameScript
                     closingSpeed = Math.Min(closingSpeed, _maxClosingSpeed);
 
                     // Small PID damping term for smooth approach (reduces oscillation)
-                    Vector3D damping = _pid.Compute(positionError, ctx.DeltaTime);
+                    Vector3D damping = _pid.Compute(predictedError, ctx.DeltaTime);
                     if (!IsValid(damping))
                     {
                         damping = Vector3D.Zero;
