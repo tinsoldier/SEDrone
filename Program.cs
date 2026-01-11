@@ -160,7 +160,7 @@ namespace IngameScript
                 }
 
                 var droneBrain = _activeBrain as DroneBrain;
-                droneBrain?.Debug?.UpdatePerfStats(Runtime.LastRunTimeMs, _context.GameTime);
+                droneBrain?.Debug?.UpdatePerfStats(Runtime.LastRunTimeMs, _context.GameTime, Runtime.LifetimeTicks);
             }
 
             // Status display
@@ -374,7 +374,7 @@ namespace IngameScript
                 if (droneBrain == null)
                     continue;
 
-                droneBrain.Debug?.UpdatePerfStats(Runtime.LastRunTimeMs, _refHackBrains[i].Context.GameTime);
+                    droneBrain.Debug?.UpdatePerfStats(Runtime.LastRunTimeMs, _refHackBrains[i].Context.GameTime, Runtime.LifetimeTicks);
                 break;
             }
         }

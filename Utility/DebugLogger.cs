@@ -28,6 +28,10 @@ namespace IngameScript
         private double _perfMaxMs;
         private string _perfLine;
         private string _perfStatus;
+        private double _perfAvgMs;
+        private long _lastPerfUpdateFrame;
+        private const double PERF_TICK_SIGNIFICANCE = 0.005;
+        private const long PERF_WARMUP_TICKS = 20;
 
         /// <summary>
         /// Creates a debug logger that writes to the PB's Echo output.
@@ -124,23 +128,44 @@ namespace IngameScript
             _lastMessageStartTime = 0;
             _perfLine = null;
             _perfStatus = null;
+            _perfAvgMs = 0;
+            _lastPerfUpdateFrame = 0;
         }
 
         /// <summary>
         /// Updates perf stats for display (averaged over ~1 second).
         /// </summary>
-        public void UpdatePerfStats(double sampleMs, double currentTime)
+        public void UpdatePerfStats(double sampleMs, double currentTime, long frame)
         {
-            _perfSumMs += sampleMs;
-            _perfSampleCount++;
+            // _perfSumMs += sampleMs;
+            // _perfSampleCount++;
             _perfMinMs = Math.Min(_perfMinMs, sampleMs);
             _perfMaxMs = Math.Max(_perfMaxMs, sampleMs);
+
+            if (frame <= PERF_WARMUP_TICKS)
+                return;
+
+            if (_lastPerfUpdateFrame == frame)
+                return;
+
+            if (_lastPerfUpdateFrame == 0)
+            {
+                _perfAvgMs = sampleMs;
+                _lastPerfUpdateFrame = frame;
+            }
+            else
+            {
+                long frames = frame - _lastPerfUpdateFrame;
+                double decay = Math.Pow(1.0 - PERF_TICK_SIGNIFICANCE, frames);
+                _perfAvgMs = (_perfAvgMs * decay) + (sampleMs * (1.0 - decay));
+                _lastPerfUpdateFrame = frame;
+            }
 
             if (currentTime - _perfWindowStart < 1.0)
                 return;
 
-            double avg = _perfSampleCount > 0 ? _perfSumMs / _perfSampleCount : 0;
-            _perfLine = $"avg {avg:F3}ms min {_perfMinMs:F3} max {_perfMaxMs:F3}";
+            // double avg = _perfSampleCount > 0 ? _perfSumMs / _perfSampleCount : 0;
+            _perfLine = $"avg {_perfAvgMs:F3}ms min {_perfMinMs:F3} max {_perfMaxMs:F3}";
 
             _perfWindowStart = currentTime;
             _perfSampleCount = 0;
