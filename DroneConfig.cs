@@ -76,6 +76,11 @@ namespace IngameScript
         public int UpdateFrequency { get; set; } = 10;          // Updates per second (1, 10, 100)
         public double PredictionTime { get; set; } = 0.5;       // How far ahead to predict target (seconds)
 
+        // === Indicator Light ===
+        // Light flashes briefly when intent/behavior changes (like HDD activity light)
+        public string IndicatorLightName { get; set; } = "";    // Empty = disabled, e.g. "[DRONE] Activity"
+        public double IndicatorFlashDuration { get; set; } = 0.1; // How long the flash lasts (seconds)
+
         /// <summary>
         /// Parses configuration from Custom Data in INI format.
         /// </summary>
@@ -145,6 +150,10 @@ namespace IngameScript
             // === Advanced Section ===
             config.UpdateFrequency = ini.Get("Advanced", "UpdateFrequency").ToInt32(config.UpdateFrequency);
             config.PredictionTime = ini.Get("Advanced", "PredictionTime").ToDouble(config.PredictionTime);
+
+            // === Indicator Section ===
+            config.IndicatorLightName = ini.Get("Indicator", "LightName").ToString(config.IndicatorLightName);
+            config.IndicatorFlashDuration = ini.Get("Indicator", "FlashDuration").ToDouble(config.IndicatorFlashDuration);
 
             return config;
         }

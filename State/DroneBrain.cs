@@ -67,6 +67,10 @@ namespace IngameScript
         // === Cached data for status display ===
         private double _lastDistanceToFormation;
 
+        // === Indicator Light (activity flash) ===
+        private double _indicatorFlashEndTime;
+        private bool _indicatorWasOn;
+
         private Program.WcPbApi _wcApi;
 
         private Dictionary<MyDetectedEntityInfo, float> _tempEnemyTargets = new Dictionary<MyDetectedEntityInfo, float>();
@@ -165,6 +169,17 @@ namespace IngameScript
 
             WeaponRigs = new FixedWeaponRigProvider(context.GridTerminalSystem, context.Me, context.Reference, _wcApi, _droneContext.Debug.Log, context.Hardware);
 
+            // Initialize indicator light (activity flash)
+            if (!string.IsNullOrEmpty(context.Config.IndicatorLightName))
+            {
+                context.Hardware.FindIndicatorLight(context.GridTerminalSystem, context.Config.IndicatorLightName);
+                if (context.Hardware.IndicatorLight != null)
+                {
+                    _indicatorWasOn = context.Hardware.IndicatorLight.Enabled;
+                    Echo?.Invoke($"[Drone] Indicator light found: {context.Hardware.IndicatorLight.CustomName}");
+                }
+            }
+
             // Set initial directive
             if (_droneContext.IsDocked)
             {
@@ -262,6 +277,7 @@ namespace IngameScript
                     RunDirective();
 
                     UpdateStatus();
+                    UpdateIndicatorLight();
 
                     // Flush debug logs to Echo
                     _droneContext.Debug?.Flush();
@@ -319,6 +335,12 @@ namespace IngameScript
                 {
                     bool positionTypeChanged = !IsSameBehaviorType(_currentPositionBehavior, newIntent.Position);
                     bool orientationTypeChanged = !IsSameBehaviorType(_currentOrientationBehavior, newIntent.Orientation);
+
+                    // Flash indicator light on behavior change (activity indicator)
+                    if (positionTypeChanged || orientationTypeChanged)
+                    {
+                        FlashIndicator();
+                    }
 
                     _currentPositionBehavior = newIntent.Position;
                     _currentOrientationBehavior = newIntent.Orientation;
@@ -561,6 +583,37 @@ namespace IngameScript
             string threatInfo = ProjectileCount > 0 ? $" T:{ProjectileCount}" : "";
 
             Status = $"{directiveName} | F:{_lastDistanceToFormation:F0}m L:{distToLeader:F0}m | {speed:F0}m/s {angleOff:F1}°{threatInfo}";
+        }
+
+        /// <summary>
+        /// Flashes the indicator light to signal activity (behavior change).
+        /// </summary>
+        private void FlashIndicator()
+        {
+            var light = Context.Hardware?.IndicatorLight;
+            if (light == null)
+                return;
+
+            // Turn on and set flash end time
+            light.Enabled = true;
+            _indicatorFlashEndTime = Context.GameTime + Config.IndicatorFlashDuration;
+        }
+
+        /// <summary>
+        /// Updates indicator light state (turns off after flash duration).
+        /// </summary>
+        private void UpdateIndicatorLight()
+        {
+            var light = Context.Hardware?.IndicatorLight;
+            if (light == null)
+                return;
+
+            // Check if flash should end
+            if (_indicatorFlashEndTime > 0 && Context.GameTime >= _indicatorFlashEndTime)
+            {
+                light.Enabled = _indicatorWasOn;  // Restore original state
+                _indicatorFlashEndTime = 0;
+            }
         }
 
         public void Shutdown()

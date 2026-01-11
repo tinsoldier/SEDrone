@@ -71,14 +71,13 @@ namespace IngameScript
 
                     yield return new BehaviorIntent
                     {
-                        Position = new Move(ctx.StationOffset, () => ctx.LastLeaderState)
-                            .WithExclusion(() => ctx.LastLeaderState.EntityId),
+                         Position = new Move(ctx.StationOffset, () => ctx.LastLeaderState),
                         Orientation = GetFormationOrientation(ctx, rigProvider, rig, leaderHasTargets, weaponsReady),
-                        ExitWhen = () => ctx.HasExitedFormation() ||
+                        ExitWhen = () => 
                             !ctx.HasLeaderContact ||
                             ctx.Tactical.HasThreats != hadThreats ||
                             (ctx.LastLeaderState.TargetEntityId != 0) != leaderHasTargets ||
-                            ((ctx.LastLeaderState.TargetEntityId != 0) && rig != null && rig.IsWeaponReady) != weaponsReady
+                            (rig != null && rig.IsWeaponReady) != weaponsReady
                     };
                 }
             }

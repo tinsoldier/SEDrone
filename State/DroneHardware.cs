@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
+using SpaceEngineers.Game.ModAPI.Ingame;
 using VRage.Game;
 
 namespace IngameScript
@@ -24,6 +25,7 @@ namespace IngameScript
         public List<IMyTerminalBlock> FixedWeaponBlocks { get; } = new List<IMyTerminalBlock>();
         public List<IMyTerminalBlock> FlareBlocks { get; } = new List<IMyTerminalBlock>();
         public List<IMyTerminalBlock> TurretBlocks { get; } = new List<IMyTerminalBlock>();
+        public IMyInteriorLight IndicatorLight { get; set; }
 
         public bool IsValid()
         {
@@ -56,6 +58,25 @@ namespace IngameScript
 
             Connectors.Clear();
             gts.GetBlocksOfType(Connectors, c => c.CubeGrid.EntityId == GridId);
+        }
+
+        /// <summary>
+        /// Finds and caches the indicator light by name pattern.
+        /// Call after initialization once config is available.
+        /// </summary>
+        public void FindIndicatorLight(IMyGridTerminalSystem gts, string lightName)
+        {
+            IndicatorLight = null;
+            if (gts == null || GridId == 0 || string.IsNullOrEmpty(lightName))
+                return;
+
+            var lights = new List<IMyInteriorLight>();
+            gts.GetBlocksOfType(lights, l =>
+                l.CubeGrid.EntityId == GridId &&
+                l.CustomName.Contains(lightName));
+
+            if (lights.Count > 0)
+                IndicatorLight = lights[0];
         }
 
         public void RefreshWeapons(IMyGridTerminalSystem gts, Program.WcPbApi wcApi)
