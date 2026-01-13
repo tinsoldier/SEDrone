@@ -247,6 +247,9 @@ namespace IngameScript
         /// </summary>
         public void SetDirective(IDirective directive)
         {
+            // Stop any active weapon firing before switching directives
+            WeaponRigs?.StopAllWeapons();
+
             // Dispose old enumerator for cleanup
             if (_directiveEnumerator != null)
             {
