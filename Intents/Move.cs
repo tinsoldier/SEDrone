@@ -62,6 +62,7 @@ namespace IngameScript
         private readonly List<Func<IReadOnlyList<long>>> _deferredExclusionLists = new List<Func<IReadOnlyList<long>>>();
         private HashSet<long> _effectiveExclusions;
         private bool _disableTerrainRepulsion;
+        private bool _levelFormation;
 
         /// <summary>
         /// Adds a static entity ID to the exclusion list.
@@ -112,6 +113,17 @@ namespace IngameScript
                 _holdEnterSpeedOverride = holdEnterSpeed;
             if (holdExitSpeed > 0)
                 _holdExitSpeedOverride = holdExitSpeed;
+            return this;
+        }
+
+        /// <summary>
+        /// Levels the formation reference frame in gravity.
+        /// Removes leader roll from formation calculations, keeping drones level relative to ground.
+        /// Only applies to formation flying mode and only when in gravity.
+        /// </summary>
+        public Move WithLevelFormation(bool level = true)
+        {
+            _levelFormation = level;
             return this;
         }
 
@@ -259,12 +271,33 @@ namespace IngameScript
                 var orientedRef = _orientedRefFunc();
                 Vector3D localOffset = Target;
 
-                // Create transformation matrix from oriented reference
+                Vector3D refForward = orientedRef.Forward;
+                Vector3D refUp = orientedRef.Up;
+
+                // Optionally level the formation in gravity (ignore leader roll)
+                // This prevents drones from being pushed toward the ground when leader banks
+                if (_levelFormation)
+                {
+                    Vector3D gravity = ctx.Reference.GetNaturalGravity();
+                    if (gravity.LengthSquared() > 0.1)
+                    {
+                        Vector3D gravityUp = -Vector3D.Normalize(gravity);
+                        // Project forward onto horizontal plane (perpendicular to gravity)
+                        refForward -= Vector3D.Dot(refForward, gravityUp) * gravityUp;
+                        if (refForward.LengthSquared() > 0.001)
+                        {
+                            refForward = Vector3D.Normalize(refForward);
+                        }
+                        refUp = gravityUp;
+                    }
+                }
+
+                // Create transformation matrix from (possibly leveled) reference
                 // MatrixD.CreateWorld uses (position, forward, up) and derives right via cross product
                 MatrixD refMatrix = MatrixD.CreateWorld(
                     orientedRef.Position,
-                    orientedRef.Forward,
-                    orientedRef.Up);
+                    refForward,
+                    refUp);
 
                 // Transform local offset to world space
                 Vector3D worldOffset = Vector3D.TransformNormal(localOffset, refMatrix);

@@ -71,7 +71,8 @@ namespace IngameScript
 
                     yield return new BehaviorIntent
                     {
-                         Position = new Move(ctx.StationOffset, () => ctx.LastLeaderState),
+                        Position = new Move(ctx.StationOffset, () => ctx.LastLeaderState)
+                            .WithLevelFormation(),
                         Orientation = GetFormationOrientation(ctx, rigProvider, rig, leaderHasTargets, weaponsReady),
                         ExitWhen = () => 
                             !ctx.HasLeaderContact ||
