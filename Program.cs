@@ -25,7 +25,7 @@ namespace IngameScript
         // === Tactical ===
         private TacticalCoordinator _tacticalCoordinator;
         private TacticalSnapshot _tacticalSnapshot;
-        private const string REFHACK_CONNECTOR_KEYWORD = "DronePad";
+        private const string CONNECTOR_KEYWORD = "DronePad";
 
         // === Timing ===
         private double _lastRunTime;
@@ -277,7 +277,7 @@ namespace IngameScript
             var connectors = new List<IMyShipConnector>();
             GridTerminalSystem.GetBlocksOfType(connectors, c =>
                 c.CubeGrid.EntityId == _context.GridId
-                && c.CustomName.IndexOf(REFHACK_CONNECTOR_KEYWORD, StringComparison.OrdinalIgnoreCase) >= 0);
+                && c.CustomName.IndexOf(CONNECTOR_KEYWORD, StringComparison.OrdinalIgnoreCase) >= 0);
 
             var seen = new HashSet<long>();
 

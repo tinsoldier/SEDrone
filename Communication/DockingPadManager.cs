@@ -24,6 +24,7 @@ namespace IngameScript
         private double _lastConnectorRefresh = 0;
         private const double CONNECTOR_REFRESH_INTERVAL = 5.0; // Refresh every 5 seconds
         private const double DOCK_QUEUE_SPACING = 3.0; // Seconds between dock starts
+        private const string CONNECTOR_KEYWORD = "DronePad"; // DRY DRY
 
         private class DockingPadAssignment
         {
@@ -230,23 +231,13 @@ namespace IngameScript
         private void RefreshConnectorList()
         {
             _availableConnectors.Clear();
-            var allConnectors = new List<IMyShipConnector>();
-            _gts.GetBlocksOfType(allConnectors, c => c.CubeGrid.EntityId == _me.CubeGrid.EntityId);
 
             // Filter connectors based on name tags or other criteria
-            foreach (var connector in allConnectors)
-            {
-                // You could add filtering logic here, e.g.:
-                // - Connectors with "[dock]" in the name
-                // - Connectors facing outward
-                // - Small vs large connectors
-
-                // For now, accept all functional connectors on our grid
-                if (connector.IsFunctional)
-                {
-                    _availableConnectors.Add(connector);
-                }
-            }
+            _gts.GetBlocksOfType(_availableConnectors, c => 
+                c.CubeGrid.EntityId == _me.CubeGrid.EntityId && 
+                c.CustomName.Contains(CONNECTOR_KEYWORD) &&
+                c.IsFunctional
+            );
 
             _echo?.Invoke($"[DOCKING] Found {_availableConnectors.Count} available connectors");
         }
