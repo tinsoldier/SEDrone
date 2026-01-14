@@ -149,6 +149,16 @@ namespace IngameScript
         public FormationNavigator Navigator => _brain.Navigator;
 
         /// <summary>
+        /// This drone's index in the current formation (0-based).
+        /// </summary>
+        public int FormationIndex => _brain.Context.FormationIndex;
+
+        /// <summary>
+        /// Total number of drones in the current formation.
+        /// </summary>
+        public int FormationCount => _brain.Context.FormationCount;
+
+        /// <summary>
         /// Docking navigator. Used by DockDirective.
         /// </summary>
         public DockingNavigator DockingNav => _brain.DockingNav;

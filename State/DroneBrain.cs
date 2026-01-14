@@ -550,8 +550,8 @@ namespace IngameScript
                     break;
 
                 case DroneCommand.Attack:
-                    // TODO: Implement attack directive (if needed, WC handles targeting)
-                    Echo?.Invoke("[Drone] Attack command received (WeaponCore auto-targeting active)");
+                    SetDirective(new AttackDirective());
+                    Echo?.Invoke("[Drone] Attack command received");
                     break;
 
                 default:

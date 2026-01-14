@@ -45,6 +45,12 @@ namespace IngameScript
         public double FormationVerticalOffset { get; set; } = 5.0; // Height above leader (Y)
         public double FormationRotation { get; set; } = 180.0;    // Rotation in degrees (0=front, 180=behind)
 
+        // === Attack Parameters ===
+        public double AttackMaxLeaderDistance { get; set; } = 3500.0;  // Max distance from leader (m)
+        public double AttackMinRangeFactor { get; set; } = 0.9;        // Min range factor (0-1)
+        public double AttackMaxRangeFactor { get; set; } = 1.0;        // Max range factor (0-1)
+        public double AttackLostTargetGraceSeconds { get; set; } = 5.0; // Search grace period (s)
+
         // === Flight Parameters ===
         public double MaxSpeed { get; set; } = 100.0;           // Hard speed cap (m/s)
         public double ApproachSpeed { get; set; } = 60.0;       // Speed when distant (m/s)
@@ -119,6 +125,12 @@ namespace IngameScript
             config.FormationBackOffset = ini.Get("Formation", "BackOffset").ToDouble(config.FormationBackOffset);
             config.FormationVerticalOffset = ini.Get("Formation", "VerticalOffset").ToDouble(config.FormationVerticalOffset);
             config.FormationRotation = ini.Get("Formation", "Rotation").ToDouble(config.FormationRotation);
+
+            // === Attack Section ===
+            config.AttackMaxLeaderDistance = ini.Get("Attack", "MaxLeaderDistance").ToDouble(config.AttackMaxLeaderDistance);
+            config.AttackMinRangeFactor = ini.Get("Attack", "MinRangeFactor").ToDouble(config.AttackMinRangeFactor);
+            config.AttackMaxRangeFactor = ini.Get("Attack", "MaxRangeFactor").ToDouble(config.AttackMaxRangeFactor);
+            config.AttackLostTargetGraceSeconds = ini.Get("Attack", "LostTargetGraceSeconds").ToDouble(config.AttackLostTargetGraceSeconds);
 
             // === Flight Section ===
             config.MaxSpeed = ini.Get("Flight", "MaxSpeed").ToDouble(config.MaxSpeed);
@@ -283,6 +295,15 @@ BackOffset=-20
 VerticalOffset=5
 ; Rotation of formation arc in degrees (0=front, 180=behind)
 Rotation=180
+
+[Attack]
+; Max distance drones may stray from leader (m)
+MaxLeaderDistance=3500
+; Desired weapon range band (fraction of max range)
+MinRangeFactor=0.9
+MaxRangeFactor=1.0
+; Seconds to loiter after losing target before aborting
+LostTargetGraceSeconds=5
 
 [Flight]
 ; Speed limits (m/s)

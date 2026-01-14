@@ -30,35 +30,36 @@ namespace IngameScript
         /// <returns>Local offset in leader space (X=right, Y=up, Z=forward)</returns>
         public static Vector3D GetHalfCircleOffset(int index, int count, double radius, double backOffset, double verticalOffset, double rotationDegrees)
         {
-            if (count <= 0 || index < 0 || index >= count)
-                return new Vector3D(0, verticalOffset, backOffset);
-
-            // Base rotation (convert degrees to radians)
             double baseAngle = rotationDegrees * Math.PI / 180.0;
+            double sweepAngle = Math.PI * 0.9;
+            return GetArcOffset(index, count, radius, backOffset, verticalOffset, baseAngle, sweepAngle);
+        }
 
-            // Spread angle for this drone within the formation
+        /// <summary>
+        /// Calculates a formation offset along an arc centered on a base angle.
+        /// Angles are in radians, local space (X=right, Y=up, Z=forward).
+        /// </summary>
+        public static Vector3D GetArcOffset(int index, int count, double radius, double forwardOffset, double verticalOffset, double baseAngleRad, double sweepAngleRad)
+        {
+            if (count <= 0 || index < 0 || index >= count)
+                return new Vector3D(0, verticalOffset, forwardOffset);
+
             double spreadAngle;
-            if (count == 1)
+            if (count == 1 || sweepAngleRad <= 0.0001)
             {
-                spreadAngle = 0; // Single drone: at center of formation
+                spreadAngle = 0;
             }
             else
             {
-                // Spread across ~162 degrees, leaving small gaps at edges
-                double sweepAngle = Math.PI * 0.9;
-                double halfSweep = sweepAngle / 2;
-                double step = sweepAngle / (count - 1);
+                double halfSweep = sweepAngleRad / 2;
+                double step = sweepAngleRad / (count - 1);
                 spreadAngle = -halfSweep + step * index;
             }
 
-            // Total angle = base rotation + spread offset
-            double angle = baseAngle + spreadAngle;
+            double angle = baseAngleRad + spreadAngle;
 
-            // Convert angle to offset (in leader-local space)
-            // At angle=0: x=0, z=+radius (front)
-            // At angle=180°: x=0, z=-radius (behind)
             double x = radius * Math.Sin(angle);
-            double z = radius * Math.Cos(angle) + backOffset;
+            double z = -radius * Math.Cos(angle) + forwardOffset;
 
             return new Vector3D(x, verticalOffset, z);
         }
