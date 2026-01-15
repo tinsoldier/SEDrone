@@ -99,8 +99,7 @@ namespace IngameScript
                                 UpdateAttackGeometry(ctx, rig, formationCount, formationIndex, lastKnownTargetPos, lastKnownTargetVel, ref lastKnownWorldAttackPos, ref lastLocalOffset, ref lastReference, ref cachedMaxRange);
                                 return lastReference;
                             })
-                        .WithLevelFormation()
-                        .WithExclusion(() => ctx.LastLeaderState.EntityId),
+                        .WithLevelFormation(),
                     Orientation = rig != null
                         ? (IOrientationBehavior)new AimFixedWeapons(() => cachedTelemetry, () => rig)
                         : (ctx.Tactical.HasThreats ? (IOrientationBehavior)new FaceClosestThreat() : new MatchLeader()),
@@ -198,7 +197,7 @@ namespace IngameScript
                 formationCount,
                 range,
                 0,
-                0,
+                ctx.Config.AttackVerticalOffset,
                 baseAngle,
                 sweepAngle);
 
@@ -206,7 +205,22 @@ namespace IngameScript
 
             MatrixD refMatrix = MatrixD.CreateWorld(lastReference.Position, lastReference.Forward, lastReference.Up);
             Vector3D worldOffset = Vector3D.TransformNormal(lastLocalOffset, refMatrix);
-            lastKnownWorldAttackPos = lastKnownTargetPos + worldOffset;
+            Vector3D worldTarget = lastKnownTargetPos + worldOffset;
+
+            // Enforce a minimum altitude in attack mode if configured.
+            Vector3D adjustedTarget = ctx.Navigator.AdjustForTerrainClearance(
+                worldTarget,
+                ctx.Reference,
+                ctx.Config.AttackVerticalOffset);
+
+            if (adjustedTarget != worldTarget)
+            {
+                Vector3D adjustedOffset = adjustedTarget - lastKnownTargetPos;
+                lastLocalOffset = Vector3D.TransformNormal(adjustedOffset, MatrixD.Transpose(refMatrix));
+                worldTarget = adjustedTarget;
+            }
+
+            lastKnownWorldAttackPos = worldTarget;
 
         }
 

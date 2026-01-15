@@ -50,6 +50,7 @@ namespace IngameScript
         public double AttackMinRangeFactor { get; set; } = 0.9;        // Min range factor (0-1)
         public double AttackMaxRangeFactor { get; set; } = 1.0;        // Max range factor (0-1)
         public double AttackLostTargetGraceSeconds { get; set; } = 5.0; // Search grace period (s)
+        public double AttackVerticalOffset { get; set; } = 0.0;        // Vertical offset above target (m)
 
         // === Flight Parameters ===
         public double MaxSpeed { get; set; } = 100.0;           // Hard speed cap (m/s)
@@ -131,6 +132,7 @@ namespace IngameScript
             config.AttackMinRangeFactor = ini.Get("Attack", "MinRangeFactor").ToDouble(config.AttackMinRangeFactor);
             config.AttackMaxRangeFactor = ini.Get("Attack", "MaxRangeFactor").ToDouble(config.AttackMaxRangeFactor);
             config.AttackLostTargetGraceSeconds = ini.Get("Attack", "LostTargetGraceSeconds").ToDouble(config.AttackLostTargetGraceSeconds);
+            config.AttackVerticalOffset = ini.Get("Attack", "VerticalOffset").ToDouble(config.AttackVerticalOffset);
 
             // === Flight Section ===
             config.MaxSpeed = ini.Get("Flight", "MaxSpeed").ToDouble(config.MaxSpeed);
@@ -304,6 +306,10 @@ MinRangeFactor=0.9
 MaxRangeFactor=1.0
 ; Seconds to loiter after losing target before aborting
 LostTargetGraceSeconds=5
+; Vertical offset above target (m)
+VerticalOffset=0
+; Minimum clearance above terrain while attacking (m)
+MinTerrainClearance=0
 
 [Flight]
 ; Speed limits (m/s)
