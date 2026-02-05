@@ -32,6 +32,10 @@ namespace IngameScript
         private DockingPadManager _dockingPadManager;
         private Program.WcPbApi _wcApi;
         private bool _hasWeaponCore;
+        private DroneHardware _hardware;
+        private TacticalSnapshot _tacticalSnapshot;
+        private double _lastFlareTime;
+        private const double FLARE_COOLDOWN_SECONDS = 1.0;
         public DockingPadManager DockingPads { get { return _dockingPadManager; } }
         private readonly List<MyDetectedEntityInfo> _obstructionCache = new List<MyDetectedEntityInfo>();
 
@@ -81,6 +85,9 @@ namespace IngameScript
                 _wcApi = null;
             }
 
+            _tacticalSnapshot = new TacticalSnapshot();
+            _hardware = DroneHardware.Capture(context.GridTerminalSystem, context.GridId, context.Reference, _wcApi);
+
             _status = "Initialized";
             if (context.IGC != null)
             {
@@ -110,6 +117,8 @@ namespace IngameScript
 
                 // TEMP: Debug LCD obstructions list from WC API
                 UpdateObstructionDebug();
+
+                UpdateLeaderFlares();
 
                 // Cleanup stale assignments periodically
                 if (_context.GameTime - _lastCleanupTime >= CLEANUP_INTERVAL)
@@ -237,6 +246,40 @@ namespace IngameScript
             }
 
             debugBlock.WriteText(output.ToString(), false);
+        }
+
+        private void UpdateLeaderFlares()
+        {
+            if (_context == null || _context.TacticalCoordinator == null || _tacticalSnapshot == null)
+                return;
+
+            if (_hardware == null || _hardware.FlareBlocks == null || _hardware.FlareBlocks.Count == 0)
+                return;
+
+            if (_wcApi == null)
+                return;
+
+            _context.TacticalCoordinator.UpdateSnapshot(_tacticalSnapshot, _context.GridId, 0, _context.GameTime);
+            if (_tacticalSnapshot.ProjectileCount <= 0)
+                return;
+
+            if (_context.GameTime - _lastFlareTime < FLARE_COOLDOWN_SECONDS)
+                return;
+
+            FireFlares();
+            _lastFlareTime = _context.GameTime;
+        }
+
+        private void FireFlares()
+        {
+            for (int i = 0; i < _hardware.FlareBlocks.Count; i++)
+            {
+                var block = _hardware.FlareBlocks[i];
+                if (block != null && block.IsFunctional)
+                {
+                    _wcApi.FireWeaponOnce(block, true, 0);
+                }
+            }
         }
 
         public void Shutdown()

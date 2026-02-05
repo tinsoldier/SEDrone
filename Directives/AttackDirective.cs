@@ -124,7 +124,6 @@ namespace IngameScript
             }
 
             return false;
-
         }
 
         private static void UpdateAttackGeometry(DroneContext ctx, IFixedWeaponRig rig, int formationCount, int formationIndex, Vector3D lastKnownTargetPos, Vector3D lastKnownTargetVel, ref Vector3D lastKnownWorldAttackPos, ref Vector3D lastLocalOffset, ref AttackReference lastReference, ref double cachedMaxRange)
