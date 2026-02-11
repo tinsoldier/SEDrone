@@ -15,6 +15,7 @@ namespace IngameScript
             {
                 ctx.SetDampeners(false);
                 ctx.Gyros?.Release();  // Clear gyro overrides while docked
+                ctx.SetWeaponsEnabled(false);
             }
 
             while (ctx.IsDocked)
@@ -28,6 +29,7 @@ namespace IngameScript
             }
 
             ctx.SetDampeners(true);
+            ctx.SetWeaponsEnabled(true);
         }
     }
 }

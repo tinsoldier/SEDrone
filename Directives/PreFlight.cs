@@ -44,6 +44,7 @@ namespace IngameScript
             // Dampeners will auto-enable on first movement command (ThrusterController safety)
             // But let's be explicit
             ctx.SetDampeners(true);
+            ctx.SetWeaponsEnabled(true);
 
             // Calculate clearance position:
             // 1. Move along connector's -Forward (away from dock face) in world space

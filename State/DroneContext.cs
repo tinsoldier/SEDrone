@@ -364,5 +364,13 @@ namespace IngameScript
         {
             Reference.DampenersOverride = enabled;
         }
+
+        /// <summary>
+        /// Enables or disables weapons for docked/undocked transitions.
+        /// </summary>
+        public void SetWeaponsEnabled(bool enabled)
+        {
+            _brain.SetWeaponsEnabled(enabled);
+        }
     }
 }

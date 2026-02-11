@@ -329,6 +329,7 @@ namespace IngameScript
                         // Disable dampeners and gyro overrides to avoid fighting parent grid
                         ctx.SetDampeners(false);
                         ctx.Gyros?.Release();
+                        ctx.SetWeaponsEnabled(false);
 
                         // Wait while docked - exit when disconnected
                         while (droneConnector.Status == MyShipConnectorStatus.Connected)
@@ -343,6 +344,7 @@ namespace IngameScript
                         
                         // Disconnected - re-enable dampeners (also done by ThrusterController as safety)
                         ctx.SetDampeners(true);
+                        ctx.SetWeaponsEnabled(true);
                         ctx.ActiveConnector = null;
                         
                         // Exit directive - will fall through to EscortDirective

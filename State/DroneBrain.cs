@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices.ComTypes;
 using Sandbox.ModAPI.Ingame;
+using Sandbox.ModAPI.Interfaces;
 using VRage;
 using VRage.Game;
 using VRageMath;
@@ -81,6 +82,7 @@ namespace IngameScript
         private IMyBroadcastListener _formationAssignmentListener;
         private double _lastFormationRegisterTime;
         private const double FORMATION_REGISTER_INTERVAL = 2.0;
+        private bool _weaponsDisabledForDock;
 
         public DroneBrain()
         {
@@ -642,6 +644,74 @@ namespace IngameScript
             string threatInfo = ProjectileCount > 0 ? $" T:{ProjectileCount}" : "";
 
             Status = $"{directiveName} | F:{_lastDistanceToFormation:F0}m L:{distToLeader:F0}m | {speed:F0}m/s {angleOff:F1}°{threatInfo}";
+        }
+
+        internal void SetWeaponsEnabled(bool enabled)
+        {
+            if (Context == null || Context.Hardware == null)
+                return;
+
+            if (!enabled && _weaponsDisabledForDock)
+                return;
+
+            if (enabled && !_weaponsDisabledForDock)
+                return;
+
+            if (!enabled)
+            {
+                WeaponRigs?.StopAllWeapons();
+            }
+
+            var fixedWeapons = Context.Hardware.FixedWeaponBlocks;
+            if (fixedWeapons != null && fixedWeapons.Count > 0)
+            {
+                for (int i = 0; i < fixedWeapons.Count; i++)
+                {
+                    var block = fixedWeapons[i] as IMyFunctionalBlock;
+                    if (block != null && block.IsFunctional && enabled)
+                    {
+                        block.Enabled = true;
+                    }
+                }
+            }
+
+            var turrets = Context.Hardware.TurretBlocks;
+            if (turrets != null && turrets.Count > 0)
+            {
+                for (int i = 0; i < turrets.Count; i++)
+                {
+                    var block = turrets[i] as IMyFunctionalBlock;
+                    if (block == null || !block.IsFunctional)
+                        continue;
+
+                    if (enabled)
+                    {
+                        block.Enabled = true;
+                        SetWcGrids(block, true);
+                    }
+                    else
+                    {
+                        SetWcGrids(block, false);
+                    }
+                }
+            }
+
+            _weaponsDisabledForDock = !enabled;
+        }
+
+        private static void SetWcGrids(IMyFunctionalBlock block, bool enabled)
+        {
+            if (block == null)
+                return;
+
+            var terminalBlock = block as IMyTerminalBlock;
+            if (terminalBlock == null)
+                return;
+
+            if (terminalBlock.GetProperty("WC_Grids") == null)
+                return;
+
+            terminalBlock.SetValue("WC_Grids", enabled);
         }
 
         /// <summary>
