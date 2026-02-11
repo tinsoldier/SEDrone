@@ -237,4 +237,95 @@ namespace IngameScript
             }
         }
     }
+
+    /// <summary>
+    /// Registration ping from a drone so the leader can assign formation slots.
+    /// </summary>
+    public struct FormationRegisterMessage
+    {
+        public long DroneEntityId;
+        public string DroneGridName;
+        public double Timestamp;
+
+        public string Serialize()
+        {
+            return string.Join("|",
+                "FORM_REGISTER",
+                DroneEntityId,
+                DroneGridName ?? "",
+                Timestamp
+            );
+        }
+
+        public static bool TryParse(string data, out FormationRegisterMessage message)
+        {
+            message = new FormationRegisterMessage();
+
+            if (string.IsNullOrEmpty(data))
+                return false;
+
+            string[] parts = data.Split('|');
+            if (parts.Length < 4 || parts[0] != "FORM_REGISTER")
+                return false;
+
+            try
+            {
+                message.DroneEntityId = long.Parse(parts[1]);
+                message.DroneGridName = parts[2];
+                message.Timestamp = double.Parse(parts[3]);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Assignment from the leader telling a drone its formation index and count.
+    /// </summary>
+    public struct FormationAssignmentMessage
+    {
+        public long DroneEntityId;
+        public int FormationIndex;
+        public int FormationCount;
+        public double Timestamp;
+
+        public string Serialize()
+        {
+            return string.Join("|",
+                "FORM_ASSIGN",
+                DroneEntityId,
+                FormationIndex,
+                FormationCount,
+                Timestamp
+            );
+        }
+
+        public static bool TryParse(string data, out FormationAssignmentMessage message)
+        {
+            message = new FormationAssignmentMessage();
+
+            if (string.IsNullOrEmpty(data))
+                return false;
+
+            string[] parts = data.Split('|');
+            if (parts.Length < 5 || parts[0] != "FORM_ASSIGN")
+                return false;
+
+            try
+            {
+                message.DroneEntityId = long.Parse(parts[1]);
+                message.FormationIndex = int.Parse(parts[2]);
+                message.FormationCount = int.Parse(parts[3]);
+                message.Timestamp = double.Parse(parts[4]);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
 }

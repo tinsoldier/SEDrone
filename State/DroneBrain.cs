@@ -78,6 +78,10 @@ namespace IngameScript
 
         public int ProjectileCount { get; private set; }
 
+        private IMyBroadcastListener _formationAssignmentListener;
+        private double _lastFormationRegisterTime;
+        private const double FORMATION_REGISTER_INTERVAL = 2.0;
+
         public DroneBrain()
         {
             Status = "Initializing";
@@ -100,6 +104,11 @@ namespace IngameScript
             if (context.LeaderStateBus == null)
             {
                 context.LeaderStateBus = new IgcStateBus(context.IGC, context.Config.IGCChannel);
+            }
+
+            if (context.IGC != null)
+            {
+                _formationAssignmentListener = context.IGC.RegisterBroadcastListener(context.Config.IGCChannel + "_FORM");
             }
 
             if (context.Hardware == null)
@@ -472,6 +481,9 @@ namespace IngameScript
                 _lastContactTime = Context.GameTime;
             }
 
+            ProcessFormationAssignments();
+            SendFormationRegister();
+
             // Process command messages from leader
             ProcessCommandMessages();
 
@@ -480,6 +492,50 @@ namespace IngameScript
             {
                 IGCRequests.ProcessMessages(Context.GameTime);
             }
+        }
+
+        private void ProcessFormationAssignments()
+        {
+            if (_formationAssignmentListener == null)
+                return;
+
+            while (_formationAssignmentListener.HasPendingMessage)
+            {
+                var msg = _formationAssignmentListener.AcceptMessage();
+                var data = msg.Data as string;
+                if (data == null)
+                    continue;
+
+                FormationAssignmentMessage assignment;
+                if (!FormationAssignmentMessage.TryParse(data, out assignment))
+                    continue;
+
+                if (assignment.DroneEntityId != Context.GridId)
+                    continue;
+
+                Context.FormationIndex = assignment.FormationIndex;
+                Context.FormationCount = assignment.FormationCount;
+            }
+        }
+
+        private void SendFormationRegister()
+        {
+            if (Context.IGC == null || !HasLeaderContact)
+                return;
+
+            if (Context.GameTime - _lastFormationRegisterTime < FORMATION_REGISTER_INTERVAL)
+                return;
+
+            _lastFormationRegisterTime = Context.GameTime;
+
+            var message = new FormationRegisterMessage
+            {
+                DroneEntityId = Context.GridId,
+                DroneGridName = Context.Reference != null ? Context.Reference.CubeGrid.CustomName : "",
+                Timestamp = Context.GameTime
+            };
+
+            Context.IGC.SendBroadcastMessage(Context.Config.IGCChannel + "_FORM", message.Serialize());
         }
 
         /// <summary>

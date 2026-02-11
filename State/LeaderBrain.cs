@@ -22,9 +22,12 @@ namespace IngameScript
         private string _status = "Initializing";
         private BrainContext _context;
         private IMyBroadcastListener _dockingRequestListener;
+        private IMyBroadcastListener _formationRegisterListener;
         private double _lastCleanupTime;
         private const double BROADCAST_INTERVAL = 0.1;  // 10 Hz broadcast rate
         private const double CLEANUP_INTERVAL = 5.0;    // Cleanup every 5 seconds
+        private const double FORMATION_BROADCAST_INTERVAL = 1.0;
+        private const double FORMATION_TIMEOUT_SECONDS = 10.0;
 
         private Dictionary<MyDetectedEntityInfo, float> _detectedEnemies = new Dictionary<MyDetectedEntityInfo, float>();
 
@@ -36,6 +39,9 @@ namespace IngameScript
         private TacticalSnapshot _tacticalSnapshot;
         private double _lastFlareTime;
         private const double FLARE_COOLDOWN_SECONDS = 1.0;
+        private double _lastFormationBroadcastTime;
+        private readonly Dictionary<long, FormationSlot> _formationRoster = new Dictionary<long, FormationSlot>();
+        private readonly List<long> _formationOrder = new List<long>();
         public DockingPadManager DockingPads { get { return _dockingPadManager; } }
         private readonly List<MyDetectedEntityInfo> _obstructionCache = new List<MyDetectedEntityInfo>();
 
@@ -54,6 +60,11 @@ namespace IngameScript
             if (context.IGC != null)
             {
                 _dockingRequestListener = context.IGC.RegisterBroadcastListener(dockingChannel);
+            }
+            if (context.IGC != null)
+            {
+                string formationChannel = context.Config.IGCChannel + "_FORM";
+                _formationRegisterListener = context.IGC.RegisterBroadcastListener(formationChannel);
             }
 
             if (_context.CommandBus == null)
@@ -119,6 +130,9 @@ namespace IngameScript
                 UpdateObstructionDebug();
 
                 UpdateLeaderFlares();
+                ProcessFormationRegistrations();
+                CleanupFormationRoster();
+                BroadcastFormationAssignments();
 
                 // Cleanup stale assignments periodically
                 if (_context.GameTime - _lastCleanupTime >= CLEANUP_INTERVAL)
@@ -282,10 +296,103 @@ namespace IngameScript
             }
         }
 
+        private void ProcessFormationRegistrations()
+        {
+            if (_formationRegisterListener == null)
+                return;
+
+            while (_formationRegisterListener.HasPendingMessage)
+            {
+                var msg = _formationRegisterListener.AcceptMessage();
+                var data = msg.Data as string;
+                if (data == null)
+                    continue;
+
+                FormationRegisterMessage register;
+                if (!FormationRegisterMessage.TryParse(data, out register))
+                    continue;
+
+                if (register.DroneEntityId == 0 || register.DroneEntityId == _context.GridId)
+                    continue;
+
+                FormationSlot slot;
+                if (!_formationRoster.TryGetValue(register.DroneEntityId, out slot))
+                {
+                    slot = new FormationSlot
+                    {
+                        DroneEntityId = register.DroneEntityId,
+                        DroneGridName = register.DroneGridName
+                    };
+                    _formationRoster[register.DroneEntityId] = slot;
+                    _formationOrder.Add(register.DroneEntityId);
+                }
+
+                slot.LastSeen = _context.GameTime;
+            }
+        }
+
+        private void CleanupFormationRoster()
+        {
+            if (_formationRoster.Count == 0)
+                return;
+
+            for (int i = _formationOrder.Count - 1; i >= 0; i--)
+            {
+                long droneId = _formationOrder[i];
+                FormationSlot slot;
+                if (!_formationRoster.TryGetValue(droneId, out slot))
+                {
+                    _formationOrder.RemoveAt(i);
+                    continue;
+                }
+
+                if (_context.GameTime - slot.LastSeen > FORMATION_TIMEOUT_SECONDS)
+                {
+                    _formationRoster.Remove(droneId);
+                    _formationOrder.RemoveAt(i);
+                }
+            }
+        }
+
+        private void BroadcastFormationAssignments()
+        {
+            if (_context.IGC == null)
+                return;
+
+            if (_formationOrder.Count == 0)
+                return;
+
+            if (_context.GameTime - _lastFormationBroadcastTime < FORMATION_BROADCAST_INTERVAL)
+                return;
+
+            _lastFormationBroadcastTime = _context.GameTime;
+            int count = _formationOrder.Count;
+            string channel = _context.Config.IGCChannel + "_FORM";
+
+            for (int i = 0; i < count; i++)
+            {
+                var message = new FormationAssignmentMessage
+                {
+                    DroneEntityId = _formationOrder[i],
+                    FormationIndex = i,
+                    FormationCount = count,
+                    Timestamp = _context.GameTime
+                };
+                _context.IGC.SendBroadcastMessage(channel, message.Serialize());
+            }
+        }
+
         public void Shutdown()
         {
             _status = "Shutdown";
             // Nothing to clean up for leader
+        }
+
+        private class FormationSlot
+        {
+            public long DroneEntityId;
+            public string DroneGridName;
+            public double LastSeen;
         }
     }
 }
